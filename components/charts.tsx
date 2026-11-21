@@ -121,13 +121,6 @@ export function TrendChart({
   const reducedMotion = usePrefersReducedMotion();
   const [activePlatform, setActivePlatform] = useState<string>("All");
 
-  if (!data.length)
-    return (
-      <div className="chart-wrap compact">
-        <div className="chart-empty">No dated snapshots in this range.</div>
-      </div>
-    );
-
   const activeSeries = useMemo(() => {
     if (!series) return ["value"];
     if (activePlatform === "All") return series;
@@ -136,6 +129,7 @@ export function TrendChart({
 
   // Compute min and max values across active series to prevent flat line perception
   const [minVal, maxVal] = useMemo(() => {
+    if (!data.length) return [0, 100];
     let min = Infinity;
     let max = -Infinity;
     data.forEach((row) => {
@@ -156,6 +150,13 @@ export function TrendChart({
     }
     return [calculatedMin, calculatedMax];
   }, [data, activeSeries]);
+
+  if (!data.length)
+    return (
+      <div className="chart-wrap compact">
+        <div className="chart-empty">No dated snapshots in this range.</div>
+      </div>
+    );
 
   return (
     <>
