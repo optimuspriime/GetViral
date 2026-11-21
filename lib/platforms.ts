@@ -3,11 +3,11 @@ import type { Platform } from "@/lib/model";
 export const PLATFORMS: Platform[] = ["Twitch", "Kick", "YouTube", "TikTok", "Instagram"];
 
 export const platformColors: Record<Platform, string> = {
-  Twitch: "#2D7446",
-  Kick: "#499659",
-  YouTube: "#669E67",
-  TikTok: "#4F7F58",
-  Instagram: "#83A965",
+  YouTube: "#FF0000",
+  Twitch: "#9146FF",
+  Kick: "#10B981",
+  TikTok: "#06B6D4",
+  Instagram: "#E1306C",
 };
 
 export function platformMetricLabel(platform: Platform, metric: "reach" | "followers") {

@@ -317,20 +317,30 @@ export default function DashboardPage() {
           </div>
           <PlatformChart data={platformData} onSelect={(name) => filterBy("platform", name)} />
           <div className="chart-legend">
-            {platformData.map((item) => (
-              <button
-                key={item.name}
-                className="legend-item legend-btn"
-                onClick={() => filterBy("platform", item.name)}
-                type="button"
-              >
-                <i
-                  className="legend-dot"
-                  style={{ background: platformColors[item.name as keyof typeof platformColors] }}
-                />
-                {item.name} <span className="muted">({item.value})</span>
-              </button>
-            ))}
+            {platformData.map((item) => {
+              const total = platformData.reduce((acc, p) => acc + p.value, 0);
+              const pct = Math.round((item.value / (total || 1)) * 100);
+              return (
+                <button
+                  key={item.name}
+                  className="legend-item legend-btn"
+                  onClick={() => filterBy("platform", item.name)}
+                  type="button"
+                  title={`Filter discovery catalog by ${item.name}`}
+                >
+                  <i
+                    className="legend-dot"
+                    style={{ background: platformColors[item.name as keyof typeof platformColors] }}
+                  />
+                  <span>
+                    <strong>{item.name}</strong>{" "}
+                    <span className="muted">
+                      {item.value.toLocaleString()} ({pct}%)
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </section>
 

@@ -95,9 +95,18 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .chart-grid.equal { grid-template-columns: 1fr 1fr; }
 .chart-wrap { height: 231px; padding: 14px 14px 8px; }
 .chart-wrap.compact { height: 205px; }
-.chart-legend { align-items: center; color: #76817b; display: flex; flex-wrap: wrap; font-size: 9px; gap: 13px; padding: 3px 18px 13px; }
-.legend-item { align-items: center; display: inline-flex; gap: 5px; }
-.legend-dot { border-radius: 3px; height: 7px; width: 7px; }
+.chart-legend { align-items: center; color: #76817b; display: flex; flex-wrap: wrap; font-size: 9px; gap: 8px; padding: 6px 18px 13px; }
+.legend-item { align-items: center; display: inline-flex; gap: 6px; }
+.legend-btn { background: #fbfdfb; border: 1px solid #e2ece3; border-radius: 6px; cursor: pointer; padding: 4px 9px; transition: all .15s ease; font-size: 10px; }
+.legend-btn:hover { background: #f0f7f1; border-color: #c9ded0; transform: translateY(-1px); }
+.legend-dot { border-radius: 50%; height: 8px; width: 8px; flex-shrink: 0; }
+.chart-series-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 18px 2px; }
+.series-pill { align-items: center; background: #f4f8f4; border: 1px solid #dbe6dd; border-radius: 99px; color: #496350; cursor: pointer; display: inline-flex; font-size: 10px; font-weight: 700; gap: 6px; padding: 3px 11px; transition: all .15s ease; }
+.series-pill:hover { background: #eaf3eb; border-color: #c7d8ca; }
+.series-pill.active { background: #ffffff; box-shadow: 0 2px 8px rgba(46,139,87,.12); border-color: #2e8b57; color: #1e5233; }
+.series-dot { border-radius: 50%; height: 7px; width: 7px; flex-shrink: 0; }
+.chart-help-caption { border-top: 1px dashed #e3ece4; color: #657b6b; font-size: 9px; line-height: 1.5; margin: 4px 18px 8px; padding-top: 6px; }
+.chart-help-caption strong { color: #254730; }
 .dashboard-lower { display: grid; gap: 14px; grid-template-columns: 1.35fr 1fr; }
 .table-wrap { overflow-x: auto; }
 .data-table { border-collapse: collapse; min-width: 650px; width: 100%; }
@@ -195,7 +204,11 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .list-main-head { align-items: center; display: flex; justify-content: space-between; margin-bottom: 12px; }
 .list-main-head h2 { font: 700 14px "Manrope"; margin: 0; }
 .list-main-head p { color: #8b9690; font-size: 9px; margin: 3px 0 0; }
-.list-row { align-items: start; display: grid; gap: 12px; grid-template-columns: minmax(140px,1.1fr) 100px minmax(140px,1fr) 116px 32px; }
+.list-row { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(210px, 1.4fr) 110px minmax(180px, 1.2fr) 120px 32px; }
+.list-creator-col { min-width: 0; }
+.creator-meta-wrap { display: flex; flex-direction: column; min-width: 0; }
+.creator-meta-wrap .creator-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-platform-col { align-items: center; display: flex; }
 .note-input { background: #fbfcfb; border: 1px solid #edf0ed; border-radius: 5px; color: #69756e; font-size: 9px; min-height: 30px; outline: none; padding: 6px 8px; resize: vertical; width: 100%; }
 .note-input:focus { border-color: #a0bba9; }
 .tag-input { background: transparent; border: 0; border-bottom: 1px solid #edf0ed; color: #69756e; font-size: 8px; margin-top: 5px; outline: none; padding: 4px 2px; width: 100%; }
@@ -1170,9 +1183,9 @@ body {
   backdrop-filter: blur(18px);
   border-bottom: 0;
   box-shadow: 0 8px 24px rgba(48, 91, 54, .025);
-  display: grid;
-  gap: clamp(12px, 2vw, 30px);
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  display: flex;
+  gap: clamp(16px, 2.5vw, 36px);
+  justify-content: space-between;
   height: 74px;
   left: 0;
   padding: 0 clamp(16px, 3vw, 46px);
@@ -1182,11 +1195,11 @@ body {
   width: 100%;
   z-index: 50;
 }
-.brand { color: #1d472b; flex: 0 0 auto; font-size: 23px; gap: 9px; letter-spacing: -1px; padding: 0; }
+.brand { color: #1d472b; flex: 0 0 auto; font-size: 23px; gap: 9px; letter-spacing: -1px; margin-right: 12px; padding: 0; }
 .brand-mark { background: linear-gradient(145deg,#eff8ec,#d7eed8); border: 1px solid rgba(93,143,91,.15); border-radius: 11px; box-shadow: 0 4px 12px rgba(42,99,51,.1); height: 36px; width: 36px; }
 .brand-mark svg { height: 26px; width: 26px; }
 .brand-period { color: #5a9a62; }
-.top-nav { align-items: center; display: flex; gap: 4px; justify-self: center; min-width: 0; }
+.top-nav { align-items: center; display: flex; flex: 0 1 auto; gap: 6px; min-width: 0; }
 .top-nav .nav-link { align-items: center; border-radius: 12px; color: #44634a; display: inline-flex; font-size: 12px; font-weight: 600; gap: 8px; min-height: 44px; padding: 4px 10px; white-space: nowrap; }
 .top-nav .nav-link:hover { background: rgba(255,255,255,.62); color: #1e5732; }
 .top-nav .nav-link.active { background: rgba(255,255,255,.76); box-shadow: 0 4px 13px rgba(58,103,63,.09); color: #24653b; }
@@ -1259,12 +1272,12 @@ h1 { color: #173b27; }
 .creator-name { color: #1f492d; }
 .creator-handle { color: #648067; }
 .creator-avatar, .profile-avatar { background: linear-gradient(145deg,#e2f1df,#cce7cd); color: #2e7140; }
-.platform-badge { border-color: rgba(75,130,77,.13); }
-.platform-twitch { background: #e5f1e4; color: #2f6f43; }
-.platform-kick { background: #e4f2e1; color: #347c43; }
-.platform-youtube { background: #edf5e6; color: #557d3e; }
-.platform-tiktok { background: #e8f2e6; box-shadow: inset 3px 0 #679d61; color: #315e39; }
-.platform-instagram { background: #f0f6e8; color: #638443; }
+.platform-badge { border: 1px solid rgba(75,130,77,.13); }
+.platform-twitch { background: #f3ebff; color: #7c3aed; border-color: #ddd6fe; }
+.platform-kick { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+.platform-youtube { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+.platform-tiktok { background: #ecfeff; color: #0891b2; border-color: #a5f3fc; }
+.platform-instagram { background: #fdf2f8; color: #db2777; border-color: #fbcfe8; }
 .platform-dot { box-shadow: 0 0 0 2px rgba(255,255,255,.75); }
 .metric-unavailable, .contact-missing { color: #748c77; }
 .country-name, .country-count { color: #496a4e; }

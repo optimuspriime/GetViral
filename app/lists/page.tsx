@@ -340,7 +340,7 @@ export default function ListsPage() {
 
                         return (
                           <div key={creator.id} className="list-row prospect-row">
-                            <td>
+                            <div className="list-creator-col">
                               <Link href={`/creators/${creator.id}`} className="creator-cell">
                                 <span className="creator-avatar">
                                   {creator.avatar && creator.avatar.startsWith("http") ? (
@@ -356,7 +356,7 @@ export default function ListsPage() {
                                   ) : null}
                                   <span>{creator.name.slice(0, 2).toUpperCase()}</span>
                                 </span>
-                                <span>
+                                <span className="creator-meta-wrap">
                                   <span className="creator-name">{creator.name}</span>
                                   <span className="creator-handle">
                                     {account?.handle} · {getCountryFlag(creator.creatorCountry)}{" "}
@@ -373,9 +373,9 @@ export default function ListsPage() {
                                   )}
                                 </span>
                               </Link>
-                            </td>
+                            </div>
 
-                            <td>
+                            <div className="list-platform-col">
                               {account && (
                                 <span
                                   className={`platform-label platform-badge platform-${account.platform.toLowerCase()} list-platform`}
@@ -387,7 +387,7 @@ export default function ListsPage() {
                                   {account.platform}
                                 </span>
                               )}
-                            </td>
+                            </div>
 
                             <div className="list-note">
                               <textarea
