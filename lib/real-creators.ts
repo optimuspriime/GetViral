@@ -5,6 +5,7 @@ import type {
   PlatformAccount,
   ReachMetricName,
 } from "@/lib/model";
+import { STREAMER_CREATORS } from "@/lib/streamers-data";
 
 const now = new Date();
 const daysAgo = (days: number) =>
@@ -13954,4 +13955,5 @@ export const REAL_CREATORS: Creator[] = [
       lastChecked: daysAgo(3),
     },
   },
+  ...STREAMER_CREATORS,
 ];

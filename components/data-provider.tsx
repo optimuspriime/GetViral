@@ -43,7 +43,7 @@ type Store = {
 };
 
 const STORAGE_KEY = "mosaic-prospect-lists-v3";
-const CREATOR_STORAGE_KEY = "mosaic-creators-v6";
+const CREATOR_STORAGE_KEY = "mosaic-creators-v7";
 const WORKSPACE_STORAGE_KEY = "mosaic-workspaces-v3";
 const StoreContext = createContext<Store | null>(null);
 
