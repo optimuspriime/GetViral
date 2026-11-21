@@ -243,13 +243,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [hydrated, workspaces]);
 
-  // Persist Creators
+  // Persist only custom creators to prevent localStorage QuotaExceededError
   useEffect(() => {
     if (!hydrated) return;
     try {
-      window.localStorage.setItem(CREATOR_STORAGE_KEY, JSON.stringify(creators));
+      const realIds = new Set(REAL_CREATORS.map((c) => c.id));
+      const customOnly = creators.filter((c) => !realIds.has(c.id));
+      if (customOnly.length > 0) {
+        window.localStorage.setItem(CREATOR_STORAGE_KEY, JSON.stringify(customOnly));
+      } else {
+        window.localStorage.removeItem(CREATOR_STORAGE_KEY);
+      }
     } catch {
-      // Ignore
+      // Ignore quota issues safely
     }
   }, [hydrated, creators]);
 

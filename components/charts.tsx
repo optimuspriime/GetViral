@@ -60,7 +60,7 @@ export function PlatformChart({
   const total = data.reduce((acc, item) => acc + item.value, 0);
 
   return (
-    <div className="chart-wrap compact">
+    <div className="chart-wrap compact" style={{ position: "relative" }}>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -91,30 +91,6 @@ export function PlatformChart({
               );
             })}
           </Pie>
-          <text
-            x="50%"
-            y="45%"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            style={{ fontSize: "16px", fontWeight: "800", fill: "#1e3a29" }}
-          >
-            {total.toLocaleString()}
-          </text>
-          <text
-            x="50%"
-            y="54%"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            style={{
-              fontSize: "9px",
-              fontWeight: "700",
-              fill: "#52755a",
-              textTransform: "uppercase",
-              letterSpacing: "0.6px",
-            }}
-          >
-            Profiles
-          </text>
           <Tooltip
             contentStyle={tooltipStyle}
             formatter={(value, name) => {
@@ -125,6 +101,10 @@ export function PlatformChart({
           />
         </PieChart>
       </ResponsiveContainer>
+      <div className="donut-center-badge" aria-hidden="true">
+        <span className="donut-center-count">{total.toLocaleString()}</span>
+        <span className="donut-center-label">Profiles</span>
+      </div>
     </div>
   );
 }
@@ -169,7 +149,12 @@ export function TrendChart({
     });
     if (min === Infinity) return [0, 100];
     const padding = Math.max(1, (max - min) * 0.15);
-    return [Math.max(0, Math.floor(min - padding)), Math.ceil(max + padding)];
+    const calculatedMin = Math.max(0, Math.floor(min - padding));
+    let calculatedMax = Math.ceil(max + padding);
+    if (calculatedMax <= calculatedMin) {
+      calculatedMax = calculatedMin + 10;
+    }
+    return [calculatedMin, calculatedMax];
   }, [data, activeSeries]);
 
   return (
@@ -205,20 +190,22 @@ export function TrendChart({
 
       <div className="chart-wrap">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 12, right: 18, left: 4, bottom: 6 }}>
+          <LineChart data={data} margin={{ top: 12, right: 18, left: 10, bottom: 6 }}>
             <CartesianGrid stroke="rgba(55,112,68,.12)" strokeDasharray="3 4" vertical={false} />
             <XAxis dataKey="date" tick={axis} axisLine={false} tickLine={false} dy={8} />
             <YAxis
               tick={axis}
               axisLine={false}
               tickLine={false}
-              width={54}
+              width={66}
+              dx={-2}
               tickFormatter={shortNumber}
               domain={[minVal, maxVal]}
               label={{
                 value: label,
                 angle: -90,
                 position: "insideLeft",
+                offset: 12,
                 fill: "#54705B",
                 fontSize: 9,
               }}
@@ -488,6 +475,7 @@ export function ComparisonBarChart({
 }
 
 export function shortNumber(value: number) {
+  if (typeof value !== "number" || isNaN(value)) return "0";
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;

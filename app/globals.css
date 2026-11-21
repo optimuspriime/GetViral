@@ -93,8 +93,36 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .stat-note { color: #53836a; font-weight: 600; }
 .chart-grid { display: grid; gap: 14px; grid-template-columns: 1.08fr 1.52fr; margin-bottom: 14px; }
 .chart-grid.equal { grid-template-columns: 1fr 1fr; }
-.chart-wrap { height: 231px; padding: 14px 14px 8px; }
-.chart-wrap.compact { height: 205px; }
+.chart-wrap { height: 231px; padding: 14px 14px 8px; position: relative; }
+.chart-wrap.compact { height: 205px; position: relative; }
+.donut-center-badge {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  user-select: none;
+}
+.donut-center-count {
+  color: #1a422a;
+  font-family: "Manrope", sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.4px;
+}
+.donut-center-label {
+  color: #55755e;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
 .chart-legend { align-items: center; color: #76817b; display: flex; flex-wrap: wrap; font-size: 9px; gap: 8px; padding: 6px 18px 13px; }
 .legend-item { align-items: center; display: inline-flex; gap: 6px; }
 .legend-btn { background: #fbfdfb; border: 1px solid #e2ece3; border-radius: 6px; cursor: pointer; padding: 4px 9px; transition: all .15s ease; font-size: 10px; }
