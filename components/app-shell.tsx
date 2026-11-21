@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowUpRight, Bookmark, Check, ChevronDown, Compass, LayoutDashboard,
-  LogOut, Menu, Plus, Search, Settings2, Sparkles, X,
+  LogOut, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useProspects } from "@/components/data-provider";
@@ -22,8 +22,16 @@ const navigation = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { lists, workspaces, activeWorkspace, setActiveWorkspace, createWorkspace, showToast } =
-    useProspects();
+  const {
+    lists,
+    workspaces,
+    activeWorkspace,
+    setActiveWorkspace,
+    createWorkspace,
+    showToast,
+    isSyncing,
+    syncAllPlatforms,
+  } = useProspects();
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -159,6 +167,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="topbar-actions">
+          {/* Quick Platform Sync */}
+          <button
+            className="icon-button topbar-sync-btn"
+            onClick={syncAllPlatforms}
+            disabled={isSyncing}
+            title="Sync and refresh data across YouTube, Twitch, Kick, TikTok & Instagram APIs"
+            type="button"
+            aria-label="Sync all platform data"
+          >
+            <RefreshCw size={14} className={isSyncing ? "spin-icon text-green" : ""} />
+          </button>
+
           {/* Quick Search */}
           <button
             className="top-search"

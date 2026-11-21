@@ -73,6 +73,8 @@ export default function DiscoverPage() {
     createList,
     addCustomCreator,
     showToast,
+    isSyncing,
+    syncAllPlatforms,
   } = useProspects();
 
   useEffect(() => {
@@ -512,6 +514,16 @@ export default function DiscoverPage() {
         </div>
         <div className="page-heading-actions">
           <button
+            className="button button-secondary sync-live-button"
+            onClick={syncAllPlatforms}
+            disabled={isSyncing}
+            title="Sync all platforms and refresh live metrics across YouTube, Kick, Twitch, TikTok & Instagram"
+            type="button"
+          >
+            <RefreshCw size={14} className={isSyncing ? "spin-icon" : ""} />
+            <span>{isSyncing ? "Syncing APIs…" : "Sync Live Data"}</span>
+          </button>
+          <button
             className="button button-primary"
             onClick={() => setImportModalOpen(true)}
             type="button"
@@ -588,7 +600,7 @@ export default function DiscoverPage() {
       <div className="country-quick-bar" role="region" aria-label="Country Navigation">
         <span className="country-bar-label">
           <Globe size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
-          Country Focus:
+          Country:
         </span>
         <button
           type="button"
@@ -599,11 +611,11 @@ export default function DiscoverPage() {
         </button>
         <button
           type="button"
-          className={`country-quick-tab india-spotlight ${filters.country.toLowerCase() === "india" ? "active" : ""}`}
+          className={`country-quick-tab ${filters.country.toLowerCase() === "india" ? "active" : ""}`}
           onClick={() => update("country", "India")}
         >
           <span className="country-flag">🇮🇳</span>
-          <strong>India (Main Focus)</strong>
+          <span>India</span>
           <span className="country-pill-count">
             {creators.filter((c) => c.creatorCountry?.toLowerCase() === "india").length}
           </span>
@@ -748,7 +760,7 @@ export default function DiscoverPage() {
                 onChange={(e) => update("country", e.target.value)}
               >
                 <option value="">All countries</option>
-                <option value="India">🇮🇳 India (Main Focus)</option>
+                <option value="India">🇮🇳 India</option>
                 <option value="United States">🇺🇸 United States</option>
                 <option value="United Kingdom">🇬🇧 United Kingdom</option>
                 <option value="Canada">🇨🇦 Canada</option>
@@ -890,6 +902,16 @@ export default function DiscoverPage() {
               )}
             </span>
             <div className="results-actions">
+              <button
+                className="icon-button sync-quick-btn"
+                onClick={syncAllPlatforms}
+                disabled={isSyncing}
+                title="Sync live platform data across YouTube, Twitch, Kick, TikTok & Instagram"
+                type="button"
+                aria-label="Sync all platform data"
+              >
+                <RefreshCw size={13} className={isSyncing ? "spin-icon" : ""} />
+              </button>
               <label className="sort-label">Sort by</label>
               <select
                 className="sort-select"

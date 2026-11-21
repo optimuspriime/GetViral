@@ -502,8 +502,43 @@ h1 { color: #17213a; font-size: 30px; letter-spacing: -1px; }
 .filter-chip:hover { background: #e5e1ff; transform: translateY(-1px); }
 .clear-all-filters { background: transparent; border: 0; color: #b34e63; font-size: 10px; font-weight: 700; padding: 5px 7px; }
 .filters-layout { gap: 16px; grid-template-columns: 248px minmax(0,1fr); }
-.filter-card { border-radius: 15px; padding: 17px; top: 78px; }
-.filter-head { border-bottom-color: #ececf4; margin-bottom: 15px; padding-bottom: 13px; }
+.filter-card {
+  align-self: start;
+  border-radius: 15px;
+  max-height: calc(100vh - 95px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 17px;
+  position: sticky;
+  scrollbar-color: #2e8b57 #eef4f0;
+  scrollbar-width: thin;
+  top: 78px;
+}
+.filter-card::-webkit-scrollbar {
+  width: 7px;
+}
+.filter-card::-webkit-scrollbar-track {
+  background: #f1f6f2;
+  border-radius: 8px;
+}
+.filter-card::-webkit-scrollbar-thumb {
+  background: #2e8b57;
+  border-radius: 8px;
+}
+.filter-card::-webkit-scrollbar-thumb:hover {
+  background: #22673f;
+}
+.filter-card .filter-head {
+  background: #ffffff;
+  border-bottom-color: #ececf4;
+  margin-bottom: 15px;
+  margin-top: -3px;
+  padding-bottom: 13px;
+  position: sticky;
+  top: -17px;
+  z-index: 2;
+}
 .filter-head strong { color: #25314e; font-size: 12px; }
 .filter-head button { color: #6254c8; font-size: 10px; font-weight: 700; }
 .filter-group { border-bottom-color: #eff0f5; margin-bottom: 14px; padding-bottom: 13px; }
@@ -2314,4 +2349,52 @@ option { background: #f6fbf4; color: #274c31; }
   color: #3b4740;
   font-size: 12px;
   padding: 0 6px;
+}
+
+/* Sync Buttons */
+.sync-live-button {
+  align-items: center;
+  border-color: #cde2d3;
+  color: #1b6838;
+  display: inline-flex;
+  gap: 7px;
+}
+.sync-live-button:hover {
+  background: #f0f8f2;
+  border-color: #27814a;
+}
+.sync-quick-btn {
+  align-items: center;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  color: #3b4740;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  transition: all 0.15s ease;
+  width: 34px;
+}
+.sync-quick-btn:hover {
+  background: #f4f8f5;
+  border-color: #27814a;
+  color: #175e33;
+}
+.topbar-sync-btn {
+  align-items: center;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  color: #3b4740;
+  display: inline-flex;
+  height: 35px;
+  justify-content: center;
+  transition: all 0.15s ease;
+  width: 35px;
+}
+.topbar-sync-btn:hover {
+  background: #f4f8f5;
+  border-color: #27814a;
+  color: #175e33;
+}
+.topbar-sync-btn .spin-icon {
+  color: #27814a;
 }
