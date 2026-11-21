@@ -6,6 +6,11 @@ export interface ProviderCreator {
   profileUrl: string;
   displayName: string | null;
   avatarUrl: string | null;
+  bio?: string | null;
+  followers?: number | null;
+  reach?: number | null;
+  category?: string | null;
+  country?: string | null;
   source: string;
 }
 
@@ -31,7 +36,7 @@ export interface ProviderRequestContext {
 
 export interface Provider {
   platform: Platform;
-  mode: "not_configured";
+  mode: "active" | "live" | "not_configured";
   coverageNote: string;
   searchCreators(
     query: string,
@@ -65,7 +70,7 @@ export class ProviderNotConfiguredError extends ProviderRequestError {
     super(
       platform,
       "not_configured",
-      "Discovery is not connected. Configure a documented API or approved data provider before syncing.",
+      "Discovery connector is not yet configured. Set API credentials in environment variables or settings.",
     );
   }
 }
