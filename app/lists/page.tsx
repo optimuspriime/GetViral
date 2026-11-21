@@ -3,7 +3,7 @@
 import Link from "next/link";
 import {
   Bookmark, Download, FolderPlus, Plus, Trash2, Users, Pencil, Check, X,
-  Share2, Sparkles
+  Share2, Sparkles, Mail
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useProspects } from "@/components/data-provider";
@@ -362,6 +362,15 @@ export default function ListsPage() {
                                     {account?.handle} · {getCountryFlag(creator.creatorCountry)}{" "}
                                     {creator.creatorCountry ?? "Global"}
                                   </span>
+                                  {creator.businessContact?.email && (
+                                    <span
+                                      className="creator-list-email-badge"
+                                      title={`Verified contact: ${creator.businessContact.email}`}
+                                    >
+                                      <Mail size={10} style={{ verticalAlign: "-1px", marginRight: 4 }} />
+                                      {creator.businessContact.email}
+                                    </span>
+                                  )}
                                 </span>
                               </Link>
                             </td>

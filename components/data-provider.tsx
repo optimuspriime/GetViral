@@ -132,12 +132,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async function resolveOwner() {
       const client = getSupabaseBrowserClient();
       if (!client) {
-        if (active) setOwnerId("primary");
+        if (active) {
+          if (typeof window !== "undefined") {
+            const localUser = window.localStorage.getItem("mosaic_user_session");
+            if (localUser) {
+              try {
+                const parsed = JSON.parse(localUser);
+                if (parsed.email) {
+                  setOwnerId(parsed.email);
+                  return;
+                }
+              } catch {}
+            }
+          }
+          setOwnerId("primary");
+        }
         return;
       }
-      const { data, error } = await client.auth.getUser();
-      if (error) console.error("Could not resolve owner.", error);
-      if (active) setOwnerId(data.user?.id ?? "primary");
+      const { data } = await client.auth.getUser();
+      if (active) {
+        if (data.user?.id) {
+          setOwnerId(data.user.id);
+        } else if (typeof window !== "undefined") {
+          const localUser = window.localStorage.getItem("mosaic_user_session");
+          if (localUser) {
+            try {
+              const parsed = JSON.parse(localUser);
+              if (parsed.email) {
+                setOwnerId(parsed.email);
+                return;
+              }
+            } catch {}
+          }
+          setOwnerId("primary");
+        } else {
+          setOwnerId("primary");
+        }
+      }
     }
     void resolveOwner();
     return () => {

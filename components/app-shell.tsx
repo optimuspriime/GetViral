@@ -50,8 +50,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const client = getSupabaseBrowserClient();
     if (client) {
       client.auth.getUser().then(({ data }) => {
-        if (data.user?.email) setUserEmail(data.user.email);
+        if (data.user?.email) {
+          setUserEmail(data.user.email);
+        } else if (typeof window !== "undefined") {
+          const localUser = window.localStorage.getItem("mosaic_user_session");
+          if (localUser) {
+            try {
+              const parsed = JSON.parse(localUser);
+              if (parsed?.email) setUserEmail(parsed.email);
+            } catch {}
+          }
+        }
       });
+    } else if (typeof window !== "undefined") {
+      const localUser = window.localStorage.getItem("mosaic_user_session");
+      if (localUser) {
+        try {
+          const parsed = JSON.parse(localUser);
+          if (parsed?.email) setUserEmail(parsed.email);
+        } catch {}
+      }
     }
   }, []);
 
@@ -94,7 +112,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (client) {
       await client.auth.signOut();
     }
-    showToast("Signed out", "info");
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("mosaic_user_session");
+      document.cookie = "mosaic_user_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
+    setUserEmail(null);
+    showToast("Signed out successfully", "info");
     setAccountMenuOpen(false);
     router.push("/auth");
   }

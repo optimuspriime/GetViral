@@ -309,6 +309,83 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .back-link { align-items: center; color: #6f7d74; display: inline-flex; font-size: 10px; gap: 6px; margin-bottom: 14px; }
 .back-link:hover { color: var(--green); }
 .profile-card { margin-bottom: 14px; padding: 20px; }
+.profile-email-card {
+  align-items: center;
+  background: #f7faf8;
+  border: 1px solid #dbe6de;
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 11px 15px;
+}
+.profile-email-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.profile-email-label {
+  align-items: center;
+  color: #526056;
+  display: flex;
+  font-size: 10px;
+  font-weight: 600;
+  gap: 5px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+.profile-email-link {
+  color: #216a3f;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color .15s;
+}
+.profile-email-link:hover {
+  color: #124326;
+}
+.profile-email-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.copy-email-btn {
+  font-size: 11px !important;
+  gap: 5px !important;
+  padding: 6px 12px !important;
+}
+.contact-send-btn {
+  font-size: 11px !important;
+  gap: 5px !important;
+  padding: 6px 13px !important;
+}
+.profile-email-cta {
+  align-items: center;
+  background: var(--green) !important;
+  box-shadow: 0 2px 8px rgba(46,139,87,.25);
+  color: #fff !important;
+  display: inline-flex;
+  gap: 6px;
+}
+.profile-email-cta:hover {
+  background: #257347 !important;
+}
+.creator-list-email-badge {
+  align-items: center;
+  background: #f0f7f2;
+  border: 1px solid #dbeae0;
+  border-radius: 4px;
+  color: #2e8b57;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 600;
+  margin-top: 3px;
+  padding: 1px 6px;
+  width: fit-content;
+}
 .profile-platform { align-items: center; display: inline-flex; gap: 5px; }
 .profile-contact-head { padding-top: 0; }
 .profile-empty { color: #8b9690; font-size: 10px; padding: 8px 16px 13px; }
@@ -343,13 +420,38 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .storage-disclaimer .status-pill { flex: 0 0 auto; }
 .storage-error { background: #fff3f1; border: 1px solid #f1d8d3; border-radius: 6px; color: #985c52; font-size: 10px; margin: -4px 0 12px; padding: 9px 11px; }
 .auth-page { margin: 0 auto; max-width: 520px; padding: 16px 0; }
+.auth-top-nav { align-items: center; display: flex; justify-content: space-between; margin-bottom: 6px; }
 .auth-main { margin: 0 auto; max-width: 1120px; min-height: 100vh; padding: 25px 24px; }
 .auth-brand { align-items: center; display: inline-flex; font: 800 21px "Manrope", sans-serif; gap: 8px; letter-spacing: -1px; }
 .auth-brand .brand-mark { height: 28px; width: 28px; }
-.auth-card { margin-top: 22px; }
+.auth-card { margin-top: 14px; }
 .auth-mark { align-items: center; background: #eaf3ed; border-radius: 8px; color: #4a795d; display: inline-flex; height: 33px; justify-content: center; margin-bottom: 17px; width: 33px; }
 .auth-submit { margin-top: 18px; width: 100%; }
-.auth-toggle { background: transparent; border: 0; color: #4d795c; display: block; font-size: 10px; font-weight: 600; margin: 14px auto 0; padding: 5px; }
+.auth-toggle { background: transparent; border: 0; color: #4d795c; display: block; font-size: 10px; font-weight: 600; margin: 14px auto 0; padding: 5px; cursor: pointer; }
+.auth-backend-status { margin: 14px 0 16px; }
+.status-badge { align-items: center; border-radius: 99px; display: inline-flex; font-size: 10px; font-weight: 600; gap: 6px; padding: 3px 10px; }
+.status-cloud { background: #eef8f1; border: 1px solid #cce8d5; color: #2e8b57; }
+.status-local { background: #f3f4f8; border: 1px solid #dfe2eb; color: #5a6682; }
+.input-with-icon { position: relative; }
+.input-with-icon .input-icon { color: #8e9a93; left: 11px; pointer-events: none; position: absolute; top: 50%; transform: translateY(-50%); }
+.form-input.has-icon { padding-left: 33px; }
+.auth-error-banner { align-items: center; background: #fdf2f0; border: 1px solid #f7d2cd; border-radius: 7px; color: #a4483e; display: flex; font-size: 11px; gap: 8px; margin-top: 12px; padding: 8px 12px; }
+.auth-success-banner { align-items: center; background: #edf7f0; border: 1px solid #cbead4; border-radius: 7px; color: #2b7a4c; display: flex; font-size: 11px; gap: 8px; margin-top: 12px; padding: 8px 12px; }
+.supabase-config-drawer { border-top: 1px solid #ebefec; margin-top: 20px; padding-top: 16px; }
+.supabase-toggle-btn { align-items: center; background: transparent; border: 0; color: #395243; cursor: pointer; display: flex; font-size: 11px; font-weight: 700; gap: 8px; justify-content: space-between; padding: 4px 0; width: 100%; }
+.supabase-config-form { background: #f9faf9; border: 1px solid #e5ebe7; border-radius: 9px; margin-top: 12px; padding: 14px; }
+.config-desc { color: #727f77; font-size: 10px; line-height: 1.5; margin: 0 0 12px; }
+.config-actions { align-items: center; display: flex; gap: 9px; margin-top: 13px; }
+.button-ghost { background: transparent; border: 1px solid #d5ddd7; color: #69786f; }
+.button-ghost:hover { background: #eee; }
+.supabase-guide-tip { border-top: 1px dashed #dbe3de; color: #7c8981; font-size: 9px; line-height: 1.6; margin-top: 12px; padding-top: 10px; }
+.supabase-guide-tip code { background: #eaefec; border-radius: 4px; padding: 1px 4px; }
+.settings-supabase-config { border-top: 1px solid #ecefeb; margin-top: 16px; padding-top: 14px; }
+.settings-sb-form { background: #fafbfa; border: 1px solid #e3eae5; border-radius: 10px; padding: 14px; }
+.sb-config-header { align-items: center; display: flex; justify-content: space-between; margin-bottom: 12px; }
+.sb-config-header strong { color: #304036; font-size: 11px; }
+.sb-form-group { margin-bottom: 10px; }
+.sb-actions-row { align-items: center; display: flex; gap: 8px; margin-top: 12px; }
 .auth-demo-note { margin-top: 16px; }
 .auth-demo-note p { color: #7d8881; font-size: 10px; line-height: 1.6; }
 .auth-demo-note .button { margin: 4px 0 8px; }

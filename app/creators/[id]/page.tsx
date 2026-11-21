@@ -18,6 +18,7 @@ export default function CreatorProfilePage() {
   const { creators, lists, hydrated, addCreator, removeCreator, createList, showToast } =
     useProspects();
   const [copied, setCopied] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   const creator = creators.find((item) => item.id === params.id);
   if (!creator) {
@@ -53,6 +54,15 @@ export default function CreatorProfilePage() {
       setCopied(true);
       showToast("Profile URL copied to clipboard!", "success");
       setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  function handleCopyEmail(emailStr: string) {
+    if (typeof window !== "undefined") {
+      navigator.clipboard.writeText(emailStr);
+      setCopiedEmail(true);
+      showToast(`Copied ${emailStr} to clipboard!`, "success");
+      setTimeout(() => setCopiedEmail(false), 2000);
     }
   }
 
@@ -122,11 +132,56 @@ export default function CreatorProfilePage() {
               </Link>
             </div>
             <p className="profile-bio">{creator.bio}</p>
+
+            {/* Direct Contact Email Display */}
+            {creator.businessContact?.email ? (
+              <div className="profile-email-card">
+                <div className="profile-email-info">
+                  <div className="profile-email-label">
+                    <Mail size={13} className="inline-icon text-green" /> Direct Business Email:
+                  </div>
+                  <a
+                    href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20Mosaic`}
+                    className="profile-email-link"
+                    title={`Send partnership email to ${creator.businessContact.email}`}
+                  >
+                    {creator.businessContact.email}
+                  </a>
+                </div>
+                <div className="profile-email-actions">
+                  <button
+                    type="button"
+                    className="button button-sm button-secondary copy-email-btn"
+                    onClick={() => handleCopyEmail(creator.businessContact!.email)}
+                    title="Copy email to clipboard"
+                  >
+                    {copiedEmail ? <Check size={13} className="text-green" /> : <Copy size={13} />}
+                    <span>{copiedEmail ? "Copied" : "Copy Email"}</span>
+                  </button>
+                  <a
+                    href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20Mosaic`}
+                    className="button button-sm button-primary contact-send-btn"
+                  >
+                    <Mail size={13} /> Send Email
+                  </a>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="profile-head-actions">
+            {creator.businessContact?.email ? (
+              <a
+                href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20Mosaic`}
+                className="button button-primary profile-email-cta"
+                title={`Send email directly to ${creator.businessContact.email}`}
+              >
+                <Mail size={14} />
+                <span>Email Creator</span>
+              </a>
+            ) : null}
             <button
-              className={`button ${saved ? "button-secondary saved-btn" : "button-primary"}`}
+              className={`button ${saved ? "button-secondary saved-btn" : "button-secondary"}`}
               disabled={!hydrated}
               onClick={toggleSave}
               type="button"
