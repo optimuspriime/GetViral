@@ -1,6 +1,7 @@
 import "server-only";
 import { REAL_CREATORS } from "@/lib/real-creators";
 import type { Provider, ProviderCreator, ProviderPage } from "@/lib/providers/types";
+import { detectCreatorCountry } from "@/lib/country-detector";
 
 const clientId = process.env.TWITCH_CLIENT_ID;
 
@@ -77,6 +78,8 @@ export const twitchProvider: Provider = {
       bio: "Twitch Creator",
       followers: null,
       reach: null,
+      category: "Gaming",
+      country: detectCreatorCountry(cleanHandle),
       source: "Twitch Platform Lookup",
     };
   },

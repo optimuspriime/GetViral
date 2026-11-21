@@ -1,6 +1,7 @@
 import "server-only";
 import { REAL_CREATORS } from "@/lib/real-creators";
 import type { Provider, ProviderCreator, ProviderPage } from "@/lib/providers/types";
+import { detectCreatorCountry } from "@/lib/country-detector";
 
 export const kickProvider: Provider = {
   platform: "Kick",
@@ -85,6 +86,8 @@ export const kickProvider: Provider = {
           bio: data.user?.bio ?? "Kick Livestreamer",
           followers: data.followers_count ?? null,
           reach: data.livestream?.viewer_count ?? null,
+          category: "Gaming",
+          country: detectCreatorCountry(cleanHandle, data.user?.username, data.user?.bio),
           source: "Live Kick Channel API",
         };
       }
@@ -101,6 +104,8 @@ export const kickProvider: Provider = {
       bio: "Kick Livestreamer",
       followers: null,
       reach: null,
+      category: "Gaming",
+      country: detectCreatorCountry(cleanHandle),
       source: "Kick Platform Lookup",
     };
   },

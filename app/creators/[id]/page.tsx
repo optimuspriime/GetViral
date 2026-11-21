@@ -10,6 +10,7 @@ import { useProspects } from "@/components/data-provider";
 import { platformColors, platformMetricLabel } from "@/lib/platforms";
 import { currentFollowers, currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
 import type { MetricSnapshot, PlatformAccount } from "@/lib/model";
+import { getCountryFlag } from "@/lib/country-detector";
 import { useState } from "react";
 
 export default function CreatorProfilePage() {
@@ -72,12 +73,19 @@ export default function CreatorProfilePage() {
         <div className="profile-head">
           <div className="profile-avatar-wrapper">
             {creator.avatar && creator.avatar.startsWith("http") ? (
-              <img src={creator.avatar} alt={creator.name} className="profile-avatar-img" />
-            ) : (
-              <span className="profile-avatar-fallback">
-                {creator.name.slice(0, 2).toUpperCase()}
-              </span>
-            )}
+              <img
+                src={creator.avatar}
+                alt={creator.name}
+                className="profile-avatar-img"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : null}
+            <span className="profile-avatar-fallback">
+              {creator.name.slice(0, 2).toUpperCase()}
+            </span>
           </div>
 
           <div className="profile-main">
@@ -105,7 +113,13 @@ export default function CreatorProfilePage() {
               ))}
               <span className="meta-tag">{creator.category ?? "General"}</span>
               <span className="meta-tag">{creator.language ?? "English"}</span>
-              <span className="meta-tag">{creator.creatorCountry ?? "Global"}</span>
+              <Link
+                href={`/discover?country=${encodeURIComponent(creator.creatorCountry ?? "")}`}
+                className="meta-tag meta-country-tag"
+                title={`Browse all creators from ${creator.creatorCountry ?? "Global"}`}
+              >
+                {getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Global"}
+              </Link>
             </div>
             <p className="profile-bio">{creator.bio}</p>
           </div>
@@ -165,8 +179,8 @@ export default function CreatorProfilePage() {
 
           <dl className="detail-list">
             <Detail
-              label="Home Country"
-              value={creator.creatorCountry ?? "Global"}
+              label="Home Country / Market"
+              value={`${getCountryFlag(creator.creatorCountry)} ${creator.creatorCountry ?? "Global"}`}
               source={creator.creatorCountrySource ?? "Verified Channel Listing"}
             />
 

@@ -6,6 +6,7 @@ import { Search, X, Compass, LayoutDashboard, Bookmark, Settings2, ArrowRight } 
 import { useProspects } from "@/components/data-provider";
 import { platformColors } from "@/lib/platforms";
 import { currentFollowers } from "@/lib/metrics";
+import { getCountryFlag } from "@/lib/country-detector";
 
 export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -119,15 +120,23 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
                     >
                       <div className="palette-avatar">
                         {creator.avatar && creator.avatar.startsWith("http") ? (
-                          <img src={creator.avatar} alt={creator.name} className="avatar-img" />
-                        ) : (
-                          <span>{creator.name.slice(0, 2).toUpperCase()}</span>
-                        )}
+                          <img
+                            src={creator.avatar}
+                            alt={creator.name}
+                            className="avatar-img"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                        <span>{creator.name.slice(0, 2).toUpperCase()}</span>
                       </div>
                       <div className="palette-item-info">
                         <strong>{creator.name}</strong>
                         <small>
-                          {account?.handle} · {creator.category} · {creator.creatorCountry}
+                          {account?.handle} · {creator.category} · {getCountryFlag(creator.creatorCountry)}{" "}
+                          {creator.creatorCountry}
                         </small>
                       </div>
                       <div className="palette-item-meta">

@@ -106,7 +106,7 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .data-table tr:last-child td { border-bottom: 0; }
 .data-table tbody tr:hover { background: #fbfcfb; }
 .creator-cell { align-items: center; display: flex; gap: 9px; min-width: 145px; }
-.creator-avatar { align-items: center; background: linear-gradient(145deg,#deece1,#c8ded0); border-radius: 8px; color: #366048; display: inline-flex; flex: 0 0 31px; font-size: 9px; font-weight: 700; height: 31px; justify-content: center; width: 31px; }
+.creator-avatar { align-items: center; background: linear-gradient(145deg,#deece1,#c8ded0); border-radius: 8px; color: #366048; display: inline-flex; flex: 0 0 31px; font-size: 9px; font-weight: 700; height: 31px; justify-content: center; overflow: hidden; position: relative; width: 31px; }
 .creator-name { color: #2e3933; display: block; font-size: 10px; font-weight: 600; }
 .creator-handle { color: #99a19d; display: block; font-size: 9px; }
 .platform-label { align-items: center; display: inline-flex; gap: 6px; }
@@ -1869,21 +1869,31 @@ option { background: #f6fbf4; color: #274c31; }
 /* Avatar Images */
 .avatar-table-img {
   border-radius: 8px;
-  height: 31px;
+  height: 100%;
+  left: 0;
   object-fit: cover;
-  width: 31px;
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 1;
 }
 .profile-avatar-wrapper {
+  background: linear-gradient(135deg, #cde6d4, #a3cfae);
   border-radius: 14px;
   flex-shrink: 0;
   height: 80px;
   overflow: hidden;
+  position: relative;
   width: 80px;
 }
 .profile-avatar-img {
   height: 100%;
+  left: 0;
   object-fit: cover;
+  position: absolute;
+  top: 0;
   width: 100%;
+  z-index: 1;
 }
 .profile-avatar-fallback {
   align-items: center;
@@ -2189,3 +2199,119 @@ option { background: #f6fbf4; color: #274c31; }
   transition: background 0.15s;
 }
 .source-link-btn:hover { background: #e8f3ea; }
+
+/* Country Quick Navigation Bar & Table Country Badges */
+.country-quick-bar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  overflow-x: auto;
+  padding: 8px 0 14px 0;
+  scrollbar-width: thin;
+}
+.country-bar-label {
+  align-items: center;
+  color: #6c7870;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.country-quick-tab {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dce4de;
+  border-radius: 20px;
+  color: #3b4740;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 6px;
+  padding: 6px 12px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.country-quick-tab:hover {
+  background: #f7faf7;
+  border-color: #bcd0bf;
+}
+.country-quick-tab.active {
+  background: #eef7f0;
+  border-color: #27814a;
+  box-shadow: 0 2px 6px rgba(39, 129, 74, 0.12);
+  color: #175e33;
+  font-weight: 700;
+}
+.country-quick-tab.india-spotlight {
+  background: #fffaf4;
+  border-color: #f7a052;
+  color: #9c4c04;
+}
+.country-quick-tab.india-spotlight.active {
+  background: linear-gradient(135deg, #fff3e6, #eaf6ee);
+  border-color: #d97706;
+  box-shadow: 0 3px 10px rgba(217, 119, 6, 0.18);
+  color: #8c3b00;
+}
+.country-pill-count {
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+}
+.country-quick-tab.active .country-pill-count {
+  background: rgba(39, 129, 74, 0.18);
+}
+.table-country-badge {
+  align-items: center;
+  background: #f4f8f5;
+  border: 1px solid #d4e5d9;
+  border-radius: 6px;
+  color: #264a33;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 5px;
+  padding: 3px 8px;
+  transition: all 0.12s ease;
+}
+.table-country-badge:hover {
+  background: #e2f0e6;
+  border-color: #28804a;
+  transform: translateY(-1px);
+}
+.table-country-badge .flag-icon {
+  font-size: 14px;
+}
+
+/* Pagination Bar */
+.pagination-bar {
+  align-items: center;
+  border-top: 1px solid #e1e9e3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 20px;
+}
+.pagination-info {
+  color: #6a766e;
+  font-size: 12px;
+  font-weight: 500;
+}
+.pagination-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.page-indicator {
+  color: #3b4740;
+  font-size: 12px;
+  padding: 0 6px;
+}

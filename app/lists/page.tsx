@@ -10,6 +10,7 @@ import { useProspects } from "@/components/data-provider";
 import { platformColors } from "@/lib/platforms";
 import { currentFollowers, currentReach, reachMetricName } from "@/lib/metrics";
 import type { ProspectStatus } from "@/lib/model";
+import { getCountryFlag } from "@/lib/country-detector";
 
 const prospectStatuses: ProspectStatus[] = ["To review", "Shortlisted", "Contacted", "Partnered"];
 
@@ -347,14 +348,20 @@ export default function ListsPage() {
                                       src={creator.avatar}
                                       alt={creator.name}
                                       className="avatar-table-img"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                      }}
                                     />
-                                  ) : (
-                                    creator.name.slice(0, 2).toUpperCase()
-                                  )}
+                                  ) : null}
+                                  <span>{creator.name.slice(0, 2).toUpperCase()}</span>
                                 </span>
                                 <span>
                                   <span className="creator-name">{creator.name}</span>
-                                  <span className="creator-handle">{account?.handle}</span>
+                                  <span className="creator-handle">
+                                    {account?.handle} · {getCountryFlag(creator.creatorCountry)}{" "}
+                                    {creator.creatorCountry ?? "Global"}
+                                  </span>
                                 </span>
                               </Link>
                             </td>

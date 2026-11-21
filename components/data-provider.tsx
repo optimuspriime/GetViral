@@ -39,9 +39,9 @@ type Store = {
   showToast: (message: string, type?: "success" | "info" | "error") => void;
 };
 
-const STORAGE_KEY = "mosaic-prospect-lists-v2";
-const CREATOR_STORAGE_KEY = "mosaic-creators-v2";
-const WORKSPACE_STORAGE_KEY = "mosaic-workspaces-v2";
+const STORAGE_KEY = "mosaic-prospect-lists-v3";
+const CREATOR_STORAGE_KEY = "mosaic-creators-v6";
+const WORKSPACE_STORAGE_KEY = "mosaic-workspaces-v3";
 const StoreContext = createContext<Store | null>(null);
 
 const DEFAULT_WORKSPACES: Workspace[] = [
@@ -52,19 +52,27 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 const INITIAL_DEFAULT_LIST: ProspectList = {
   id: "list-default-shortlist",
   name: "Priority Shortlist",
-  creatorIds: ["creator-mrbeast", "creator-mkbhd", "creator-kaicenat"],
+  creatorIds: [
+    "creator-carryminati",
+    "creator-bhuvanbam",
+    "creator-mrbeast",
+    "creator-technogamerz",
+  ],
   notes: {
-    "creator-mrbeast": "Q4 holiday campaign anchor creator. Excellent cross-platform reach.",
-    "creator-mkbhd": "Ideal for hardware review sponsorship and product launch.",
+    "creator-carryminati": "Top Indian creator for high-engagement viral campaigns.",
+    "creator-bhuvanbam": "Ideal for storytelling, brand integration, and youth appeal.",
+    "creator-mrbeast": "Global anchor creator for grand-scale awareness campaigns.",
   },
   tags: {
-    "creator-mrbeast": ["High Priority", "Entertainment"],
-    "creator-mkbhd": ["Tech", "Reviewer"],
+    "creator-carryminati": ["India", "High Priority", "Comedy"],
+    "creator-bhuvanbam": ["India", "Entertainment", "Actor"],
+    "creator-mrbeast": ["Global", "Viral"],
   },
   statuses: {
+    "creator-carryminati": "Shortlisted",
+    "creator-bhuvanbam": "To review",
     "creator-mrbeast": "Shortlisted",
-    "creator-mkbhd": "To review",
-    "creator-kaicenat": "To review",
+    "creator-technogamerz": "To review",
   },
 };
 
@@ -160,10 +168,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (savedCreators) {
         const parsed = JSON.parse(savedCreators);
         if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
+          const realIds = new Set(REAL_CREATORS.map((c) => c.id));
           const map = new Map(REAL_CREATORS.map((c) => [c.id, c]));
-          parsed.forEach((c) => map.set(c.id, c));
+          parsed.forEach((c) => {
+            if (!realIds.has(c.id)) {
+              map.set(c.id, c);
+            }
+          });
           setCreators([...map.values()]);
         }
+      } else {
+        setCreators(REAL_CREATORS);
       }
     } catch (e) {
       console.warn("Could not load from localStorage:", e);

@@ -15,6 +15,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { platformColors } from "@/lib/platforms";
 import type { Creator, MetricSnapshot, PlatformAccount } from "@/lib/model";
 import { currentFollowers, currentReach, reachMetricName } from "@/lib/metrics";
+import { getCountryFlag } from "@/lib/country-detector";
 
 type SnapshotPoint = Record<string, string | number | null> & { date: string };
 type AccountWithCreator = { creator: Creator; account: PlatformAccount };
@@ -537,7 +538,10 @@ export default function DashboardPage() {
                       onClick={() => filterBy("country", name)}
                       type="button"
                     >
-                      <span className="country-name">{name}</span>
+                      <span className="country-name">
+                        <span style={{ marginRight: 6 }}>{getCountryFlag(name)}</span>
+                        {name}
+                      </span>
                       <span className="progress-track">
                         <span
                           className="progress-fill"
@@ -619,10 +623,13 @@ export default function DashboardPage() {
                                     src={creator.avatar}
                                     alt={creator.name}
                                     className="avatar-table-img"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                    }}
                                   />
-                                ) : (
-                                  creator.name.slice(0, 2).toUpperCase()
-                                )}
+                                ) : null}
+                                <span>{creator.name.slice(0, 2).toUpperCase()}</span>
                               </span>
                               <span>
                                 <span className="creator-name">{creator.name}</span>
@@ -653,7 +660,17 @@ export default function DashboardPage() {
                               ? `${shortNumber(currentReach(account)!)} ${reachMetricName(account) === "avg_live_viewers" ? "avg viewers" : "avg views"}`
                               : "—"}
                           </td>
-                          <td>{creator.creatorCountry ?? "Global"}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="table-country-badge"
+                              onClick={() => filterBy("country", creator.creatorCountry ?? "")}
+                              title={`Filter by ${creator.creatorCountry ?? "Global"}`}
+                            >
+                              <span className="flag-icon">{getCountryFlag(creator.creatorCountry)}</span>
+                              <span>{creator.creatorCountry ?? "Global"}</span>
+                            </button>
+                          </td>
                           <td>{account?.activity ?? "Active"}</td>
                           <td>
                             <Link
