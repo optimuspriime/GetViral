@@ -912,9 +912,9 @@ option { background: #1b1935; color: #f2efff; }
   flex-direction: column;
   justify-content: center;
   margin-bottom: 20px;
-  min-height: 390px;
+  min-height: 350px;
   overflow: hidden;
-  padding: 27px 24px 31px;
+  padding: 20px 24px 22px;
   position: relative;
   text-align: center;
 }
@@ -930,9 +930,9 @@ option { background: #1b1935; color: #f2efff; }
 }
 .dashboard-hero::before { background: radial-gradient(ellipse, rgba(139,105,245,.34), transparent 68%); height: 310px; width: 480px; }
 .dashboard-hero::after { background: radial-gradient(ellipse, rgba(66,196,213,.2), transparent 68%); height: 260px; left: 73%; top: 57%; width: 390px; }
-.hero-visual { align-items: center; display: flex; height: 190px; justify-content: center; margin: -4px 0 9px; position: relative; width: 190px; }
-.hero-logo-mark { align-items: center; background: linear-gradient(145deg,#a282ff,#6550d1 62%,#443c9c); border: 1px solid rgba(234,225,255,.5); border-radius: 30px; box-shadow: 0 0 0 10px rgba(139,112,235,.08), 0 0 46px rgba(148,120,255,.55), 0 18px 40px rgba(5,4,18,.5); color: #fff; display: inline-flex; height: 120px; justify-content: center; position: relative; width: 120px; z-index: 1; animation: mosaic-glow 6.5s ease-in-out infinite; }
-.hero-logo-mark svg { height: 78px; width: 78px; }
+.hero-visual { align-items: center; display: flex; height: 174px; justify-content: center; margin: -4px 0 9px; position: relative; width: 190px; }
+.hero-logo-mark { align-items: center; background: linear-gradient(145deg,#a282ff,#6550d1 62%,#443c9c); border: 1px solid rgba(234,225,255,.5); border-radius: 32px; box-shadow: 0 0 0 10px rgba(139,112,235,.08), 0 0 46px rgba(148,120,255,.55), 0 18px 40px rgba(5,4,18,.5); color: #fff; display: inline-flex; height: 136px; justify-content: center; position: relative; width: 136px; z-index: 1; animation: mosaic-glow 6.5s ease-in-out infinite; }
+.hero-logo-mark svg { height: 88px; width: 88px; }
 .hero-logo-mark svg rect:nth-child(2) { fill: #67e4df; }
 .hero-logo-mark svg rect:nth-child(3) { fill: #ff8ca8; }
 .hero-copy { max-width: 720px; position: relative; z-index: 1; }
@@ -947,16 +947,16 @@ option { background: #1b1935; color: #f2efff; }
   50% { box-shadow: 0 0 0 14px rgba(139,112,235,.11), 0 0 54px rgba(148,120,255,.64), 0 18px 44px rgba(5,4,18,.52); }
 }
 @media (max-width: 850px) {
-  .dashboard-hero { min-height: 350px; }
-  .hero-visual { height: 164px; width: 164px; }
-  .hero-logo-mark { height: 104px; width: 104px; }
-  .hero-logo-mark svg { height: 68px; width: 68px; }
+  .dashboard-hero { min-height: 320px; }
+  .hero-visual { height: 148px; width: 164px; }
+  .hero-logo-mark { height: 116px; width: 116px; }
+  .hero-logo-mark svg { height: 76px; width: 76px; }
 }
 @media (max-width: 580px) {
-  .dashboard-hero { border-radius: 20px; margin-bottom: 16px; min-height: 325px; padding: 20px 15px 25px; }
-  .hero-visual { height: 140px; margin-bottom: 4px; width: 140px; }
-  .hero-logo-mark { border-radius: 24px; height: 88px; width: 88px; }
-  .hero-logo-mark svg { height: 58px; width: 58px; }
+  .dashboard-hero { border-radius: 20px; margin-bottom: 16px; min-height: 300px; padding: 16px 15px 20px; }
+  .hero-visual { height: 130px; margin-bottom: 4px; width: 140px; }
+  .hero-logo-mark { border-radius: 26px; height: 96px; width: 96px; }
+  .hero-logo-mark svg { height: 64px; width: 64px; }
   .hero-copy h1 { font-size: 29px; }
   .hero-copy .page-subtitle { font-size: 12px; }
   .page-content { padding-left: 12px; padding-right: 12px; }
