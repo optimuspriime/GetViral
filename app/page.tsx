@@ -622,9 +622,14 @@ export default function DashboardPage() {
                     {recent.map((creator) => {
                       const account = creator.accounts[0];
                       return (
-                        <tr key={creator.id}>
+                        <tr
+                          key={creator.id}
+                          className="clickable-row"
+                          onClick={() => router.push(`/creators/${creator.id}`)}
+                          style={{ cursor: "pointer" }}
+                        >
                           <td>
-                            <Link href={`/creators/${creator.id}`} className="creator-cell">
+                            <div className="creator-cell">
                               <span className="creator-avatar">
                                 {creator.avatar && creator.avatar.startsWith("http") ? (
                                   <img
@@ -643,7 +648,7 @@ export default function DashboardPage() {
                                 <span className="creator-name">{creator.name}</span>
                                 <span className="creator-handle">{account?.handle}</span>
                               </span>
-                            </Link>
+                            </div>
                           </td>
                           <td>
                             {account && (
@@ -672,7 +677,10 @@ export default function DashboardPage() {
                             <button
                               type="button"
                               className="table-country-badge"
-                              onClick={() => filterBy("country", creator.creatorCountry ?? "")}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                filterBy("country", creator.creatorCountry ?? "");
+                              }}
                               title={`Filter by ${creator.creatorCountry ?? "Global"}`}
                             >
                               <span className="flag-icon">{getCountryFlag(creator.creatorCountry)}</span>
@@ -684,6 +692,7 @@ export default function DashboardPage() {
                             <Link
                               href={`/creators/${creator.id}`}
                               className="button button-secondary button-sm"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               Profile
                             </Link>

@@ -1202,7 +1202,7 @@ export default function DiscoverPage() {
                           </td>
                           <td>{account.activity ?? "Active"}</td>
                           <td>
-                            {creator.businessContact ? (
+                            {creator.businessContact?.email ? (
                               <a
                                 href={`mailto:${creator.businessContact.email}`}
                                 onClick={(e) => e.stopPropagation()}
