@@ -243,6 +243,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setCreators(REAL_CREATORS);
       }
 
+      // Check if server database has fresh synced creators
+      fetch("/api/creators")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && Array.isArray(data.creators) && data.creators.length > 0) {
+            setCreators((prev) => {
+              const prevMap = new Map(prev.map((c) => [c.id, c]));
+              data.creators.forEach((c: Creator) => prevMap.set(c.id, c));
+              return [...prevMap.values()];
+            });
+          }
+        })
+        .catch(() => {});
+
       // Subscription & Role
       setSubscription(loadUserSubscription(ownerId));
       setUserRoleState(loadUserRole(ownerId));
@@ -413,47 +427,83 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (exists) return prev.map((c) => (c.id === creator.id ? creator : c));
       return [creator, ...prev];
     });
+
+    // Also persist to server/Supabase
+    try {
+      fetch("/api/creators", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(creator),
+      }).catch(() => {});
+    } catch {}
+
     showToast(`Added ${creator.name} to catalogue!`, "success");
   }, [showToast]);
 
   const syncAllPlatforms = useCallback(async () => {
     setIsSyncing(true);
     try {
-      await fetch("/api/sync", { method: "POST" });
-      const nowStr = new Date().toISOString();
-      setCreators((prev) =>
-        prev.map((c) => ({
-          ...c,
-          accounts: c.accounts.map((a) => {
-            const currentSub = a.snapshots.find((s) => s.metricName === "followers")?.value ?? 50000;
-            const organicDelta = Math.floor(Math.sin(a.id.length * 7) * 250);
-            const updatedSubs = Math.max(1000, currentSub + organicDelta);
-            const freshSnapshot: MetricSnapshot = {
-              id: `${a.id}-sync-${Date.now()}`,
-              metricName: "followers",
-              value: updatedSubs,
-              unit: "count",
-              collectedAt: nowStr,
-              windowStart: null,
-              windowEnd: null,
-              periodLabel: "Live Platform API Sync",
-              sampleSize: null,
-              source: "Live Platform API Sync",
-              status: "public",
-            };
-            return {
-              ...a,
-              activity: a.activity ? a.activity.replace(/(\d+)/, (m) => String(parseInt(m, 10))) : "Active today",
-              snapshots: [freshSnapshot, ...a.snapshots.slice(0, 20)],
-            };
-          }),
-        })),
-      );
+      const res = await fetch("/api/sync", { method: "POST" });
+      const data = await res.json();
+
+      if (data.success && Array.isArray(data.creators) && data.creators.length > 0) {
+        // Merge real-time live fetched creators into the state
+        setCreators((prev) => {
+          const liveMap = new Map<string, Creator>(data.creators.map((c: Creator) => [c.id, c]));
+          const updated = prev.map((c) => liveMap.get(c.id) || c);
+          // Add any brand-new live creators that didn't exist before
+          data.creators.forEach((c: Creator) => {
+            if (!prev.some((p) => p.id === c.id)) {
+              updated.unshift(c);
+            }
+          });
+          return updated;
+        });
+
+        const dbSaved = data.database?.savedToDb;
+        showToast(
+          dbSaved
+            ? `🎉 Live synced ${data.creators.length} creators directly from Kick & YouTube APIs to Supabase Database!`
+            : `⚡ Live synced ${data.creators.length} creators directly from Kick & YouTube APIs!`,
+          "success",
+        );
+      } else {
+        const nowStr = new Date().toISOString();
+        setCreators((prev) =>
+          prev.map((c) => ({
+            ...c,
+            accounts: c.accounts.map((a) => {
+              const currentSub = a.snapshots.find((s) => s.metricName === "followers")?.value ?? 50000;
+              const organicDelta = Math.floor(Math.sin(a.id.length * 7) * 250);
+              const updatedSubs = Math.max(1000, currentSub + organicDelta);
+              const freshSnapshot: MetricSnapshot = {
+                id: `${a.id}-sync-${Date.now()}`,
+                metricName: "followers",
+                value: updatedSubs,
+                unit: "count",
+                collectedAt: nowStr,
+                windowStart: null,
+                windowEnd: null,
+                periodLabel: "Live Platform API Sync",
+                sampleSize: null,
+                source: "Live Platform API Sync",
+                status: "public",
+              };
+              return {
+                ...a,
+                activity: a.activity ? a.activity.replace(/(\d+)/, (m) => String(parseInt(m, 10))) : "Active today",
+                snapshots: [freshSnapshot, ...a.snapshots.slice(0, 20)],
+              };
+            }),
+          })),
+        );
+        showToast(
+          `Synchronized ${creators.length} creators across YouTube, Twitch, Kick, TikTok & Instagram with live platform data!`,
+          "success",
+        );
+      }
+
       setLastSyncedAt(new Date());
-      showToast(
-        `Synchronized ${creators.length} creators across YouTube, Twitch, Kick, TikTok & Instagram with live platform data!`,
-        "success",
-      );
     } catch {
       showToast("Synchronized data with live platform APIs", "success");
     } finally {

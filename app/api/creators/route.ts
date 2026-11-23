@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { REAL_CREATORS } from "@/lib/real-creators";
 import type { Creator } from "@/lib/model";
 import { currentFollowers, currentReach } from "@/lib/metrics";
+import { loadCreatorsFromSupabase, saveCreatorsToSupabase } from "@/lib/supabase/db-sync";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,7 +14,18 @@ export async function GET(request: Request) {
   const maxFollowers = searchParams.get("maxFollowers");
   const sort = searchParams.get("sort") || "name";
 
-  let filtered = [...REAL_CREATORS];
+  // Attempt loading from Supabase Database if connected
+  let baseList: Creator[] = REAL_CREATORS;
+  try {
+    const dbCreators = await loadCreatorsFromSupabase();
+    if (dbCreators && dbCreators.length > 0) {
+      baseList = dbCreators;
+    }
+  } catch {
+    // Fallback to verified catalog
+  }
+
+  let filtered = [...baseList];
 
   if (q) {
     filtered = filtered.filter(
@@ -83,18 +95,25 @@ export async function POST(request: Request) {
     }
 
     const newCreator: Creator = {
-      id: `creator-user-${Date.now()}`,
+      id: body.id || `creator-user-${Date.now()}`,
       name: body.name,
       category: body.category ?? "General",
       language: body.language ?? "English",
       creatorCountry: body.creatorCountry ?? "Global",
-      creatorCountrySource: "User Submitted Record",
+      creatorCountrySource: body.creatorCountrySource ?? "User Submitted Record",
       bio: body.bio ?? "",
       avatar: body.avatar ?? "",
       accounts: body.accounts,
       audienceInsights: body.audienceInsights ?? [],
       businessContact: body.businessContact ?? null,
     };
+
+    // Save to Supabase if connected
+    try {
+      await saveCreatorsToSupabase([newCreator]);
+    } catch (saveErr) {
+      console.warn("Could not save creator to Supabase:", saveErr);
+    }
 
     return NextResponse.json(newCreator, { status: 201 });
   } catch {

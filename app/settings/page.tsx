@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   ArrowUpRight, Check, CircleHelp, Database, ExternalLink, KeyRound,
   RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle,
-  Zap, User
+  Zap, User, Copy
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { INTEGRATIONS } from "@/lib/integrations";
@@ -32,6 +32,16 @@ export default function SettingsPage() {
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
   const [supabaseSaving, setSupabaseSaving] = useState(false);
   const [supabaseStatusMsg, setSupabaseStatusMsg] = useState("");
+  const [dbLiveStatus, setDbLiveStatus] = useState<{
+    connected: boolean;
+    tableExists: boolean;
+    creatorCount: number;
+    message: string;
+  } | null>(null);
+  const [checkingDb, setCheckingDb] = useState(false);
+  const [seedingDb, setSeedingDb] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showSqlViewer, setShowSqlViewer] = useState(false);
 
   // Test Console State
   const [testConsolePlatform, setTestConsolePlatform] = useState("YouTube");
@@ -109,6 +119,148 @@ export default function SettingsPage() {
       setAuthError(err instanceof Error ? err.message : "Failed to connect to Supabase");
     } finally {
       setSupabaseSaving(false);
+    }
+  }
+
+  async function checkServerDbStatus() {
+    setCheckingDb(true);
+    try {
+      const res = await fetch("/api/database/status");
+      const data = await res.json();
+      setDbLiveStatus(data);
+      if (data.connected && data.tableExists) {
+        showToast(`Database active: ${data.creatorCount} creators in Supabase`, "success");
+      } else if (data.connected && !data.tableExists) {
+        showToast("Connected! Creators table missing - run SQL schema below.", "info");
+      } else {
+        showToast(data.message || "Database not connected", "error");
+      }
+    } catch {
+      showToast("Could not check database status", "error");
+    } finally {
+      setCheckingDb(false);
+    }
+  }
+
+  async function triggerSeedDatabase() {
+    setSeedingDb(true);
+    try {
+      const res = await fetch("/api/database/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 50 }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, "success");
+        await checkServerDbStatus();
+      } else {
+        showToast(data.message || "Seeding failed", "error");
+      }
+    } catch {
+      showToast("Seeding request failed", "error");
+    } finally {
+      setSeedingDb(false);
+    }
+  }
+
+  const SQL_SCHEMA_SNIPPET = `-- 1. Enable pgcrypto
+create extension if not exists pgcrypto;
+
+-- 2. Creators Table
+create table if not exists public.creators (
+  id text primary key,
+  name text not null,
+  category text,
+  language text,
+  creator_country text,
+  creator_country_source text,
+  bio text,
+  avatar text,
+  business_contact_email text,
+  business_contact_source text,
+  business_contact_last_checked timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- 3. Platform Accounts
+create table if not exists public.creator_platform_accounts (
+  id text primary key,
+  creator_id text not null references public.creators(id) on delete cascade,
+  platform text not null,
+  handle text not null,
+  profile_url text not null,
+  activity text,
+  created_at timestamptz not null default now(),
+  unique (platform, handle)
+);
+
+-- 4. Metric Snapshots
+create table if not exists public.metric_snapshots (
+  id text primary key,
+  account_id text not null references public.creator_platform_accounts(id) on delete cascade,
+  metric_name text not null,
+  value numeric,
+  unit text not null default 'count',
+  collected_at timestamptz not null default now(),
+  window_start timestamptz,
+  window_end timestamptz,
+  period_label text,
+  sample_size integer,
+  source text not null default 'Platform API',
+  status text not null default 'public',
+  created_at timestamptz not null default now()
+);
+
+-- 5. Audience Regional Insights
+create table if not exists public.audience_insights (
+  id text primary key default gen_random_uuid()::text,
+  creator_id text not null references public.creators(id) on delete cascade,
+  dimension text not null,
+  value text not null,
+  amount numeric,
+  unit text default '%',
+  confidence numeric default 0.9,
+  source text default 'Platform Analytics',
+  status text default 'public',
+  collected_at timestamptz not null default now()
+);
+
+-- 6. User Subscriptions
+create table if not exists public.user_subscriptions (
+  user_id text primary key,
+  plan_id text not null default 'free',
+  searches_used integer not null default 0,
+  searches_remaining integer not null default 50,
+  total_quota integer not null default 50,
+  role text not null default 'viewer',
+  updated_at timestamptz not null default now()
+);
+
+-- Enable RLS & Public Access
+alter table public.creators enable row level security;
+alter table public.creator_platform_accounts enable row level security;
+alter table public.metric_snapshots enable row level security;
+alter table public.audience_insights enable row level security;
+alter table public.user_subscriptions enable row level security;
+
+create policy "Public read creators" on public.creators for select using (true);
+create policy "Public insert/update creators" on public.creators for all using (true) with check (true);
+create policy "Public read accounts" on public.creator_platform_accounts for select using (true);
+create policy "Public insert/update accounts" on public.creator_platform_accounts for all using (true) with check (true);
+create policy "Public read metric snapshots" on public.metric_snapshots for select using (true);
+create policy "Public insert metric snapshots" on public.metric_snapshots for all using (true) with check (true);
+create policy "Public read audience insights" on public.audience_insights for select using (true);
+create policy "Public insert audience insights" on public.audience_insights for all using (true) with check (true);
+create policy "Public subscriptions read/write" on public.user_subscriptions for all using (true) with check (true);`;
+
+  function copySqlToClipboard() {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(SQL_SCHEMA_SNIPPET);
+      setCopiedSql(true);
+      showToast("SQL Schema copied to clipboard!", "success");
+      setTimeout(() => setCopiedSql(false), 2500);
     }
   }
 
@@ -637,6 +789,152 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </form>
+
+                {/* Database Verification & Live API Sync Controls */}
+                <div className="db-verification-box" style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color, #23272f)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <strong style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Database size={13} className="text-amber" />
+                      Database & Live API Synchronization
+                    </strong>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="button button-secondary button-sm"
+                        onClick={copySqlToClipboard}
+                        title="Copy database table definitions for Supabase SQL Editor"
+                      >
+                        {copiedSql ? <Check size={12} className="text-green" /> : <Copy size={12} />}
+                        <span>{copiedSql ? "Copied SQL!" : "Copy SQL Script"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-secondary button-sm"
+                        onClick={() => setShowSqlViewer(!showSqlViewer)}
+                      >
+                        {showSqlViewer ? "Hide SQL" : "View SQL"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: 12, color: "var(--muted, #8b949e)", marginBottom: 12, lineHeight: 1.5 }}>
+                    Connect Supabase to permanently store creators, accounts, and metric snapshots. No manual data uploads needed — live creator data is automatically fetched directly from YouTube, Kick, and Twitch APIs.
+                  </p>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      className="button button-secondary button-sm"
+                      onClick={checkServerDbStatus}
+                      disabled={checkingDb}
+                    >
+                      {checkingDb ? (
+                        <>
+                          <RefreshCw size={12} className="spin-icon" /> Checking Database…
+                        </>
+                      ) : (
+                        "Verify Server Database"
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="button button-primary button-sm"
+                      onClick={triggerSeedDatabase}
+                      disabled={seedingDb}
+                    >
+                      {seedingDb ? (
+                        <>
+                          <RefreshCw size={12} className="spin-icon" /> Syncing from APIs…
+                        </>
+                      ) : (
+                        "⚡ Sync Live Data to Database"
+                      )}
+                    </button>
+                  </div>
+
+                  {dbLiveStatus && (
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        backgroundColor: dbLiveStatus.connected ? "rgba(46, 125, 72, 0.15)" : "rgba(229, 83, 75, 0.15)",
+                        border: `1px solid ${dbLiveStatus.connected ? "rgba(46, 125, 72, 0.4)" : "rgba(229, 83, 75, 0.4)"}`,
+                        fontSize: 12,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: dbLiveStatus.connected ? "#4ade80" : "#f87171", marginBottom: 4 }}>
+                        {dbLiveStatus.connected ? "✓ Supabase Database Operational" : "✕ Database Connection Offline"}
+                      </div>
+                      <div>{dbLiveStatus.message}</div>
+                      {dbLiveStatus.tableExists && (
+                        <div style={{ marginTop: 4, color: "#9ca3af" }}>
+                          Total stored creators in PostgreSQL: <strong>{dbLiveStatus.creatorCount}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {showSqlViewer && (
+                    <div style={{ marginTop: 10, marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>PostgreSQL Migration Script (Supabase SQL Editor):</span>
+                        <button
+                          type="button"
+                          className="button button-secondary button-sm"
+                          style={{ padding: "2px 8px", height: 24, fontSize: 11 }}
+                          onClick={copySqlToClipboard}
+                        >
+                          <Copy size={11} /> Copy
+                        </button>
+                      </div>
+                      <pre
+                        style={{
+                          backgroundColor: "#0d1117",
+                          padding: 12,
+                          borderRadius: 6,
+                          fontSize: 11,
+                          overflowX: "auto",
+                          maxHeight: 220,
+                          color: "#c9d1d9",
+                          border: "1px solid #30363d",
+                        }}
+                      >
+                        {SQL_SCHEMA_SNIPPET}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* 4-Step Quick Setup Guide */}
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 8,
+                      backgroundColor: "rgba(255, 255, 255, 0.03)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      fontSize: 12,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 6, color: "#e6edf3" }}>
+                      Quick 3-Minute Database Setup Guide:
+                    </div>
+                    <ol style={{ paddingLeft: 18, margin: 0, color: "#8b949e", lineHeight: 1.6 }}>
+                      <li>
+                        Go to <a href="https://supabase.com" target="_blank" rel="noreferrer" style={{ color: "#58a6ff" }}>supabase.com</a> and create a free project.
+                      </li>
+                      <li>
+                        Click <strong>SQL Editor</strong> in the left sidebar, paste the SQL script (click <em>Copy SQL Script</em> above), and click <strong>Run</strong>.
+                      </li>
+                      <li>
+                        Go to <strong>Project Settings → API</strong>, copy your <strong>Project URL</strong> and <strong>anon public API key</strong>, and paste them above.
+                      </li>
+                      <li>
+                        Click <strong>Save & Connect</strong>, then click <strong>⚡ Sync Live Data to Database</strong>. Mosaic will automatically fetch live channels from YouTube & Kick and populate your database!
+                      </li>
+                    </ol>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
