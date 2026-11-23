@@ -237,20 +237,10 @@ export default function DiscoverPage() {
       label: `Avg. Viewers ≥ ${formatNumber(Number(filters.minLive))}`,
       clear: () => update("minLive", ""),
     });
-  if (filters.maxLive)
-    appliedFilters.push({
-      label: `Avg. Viewers ≤ ${formatNumber(Number(filters.maxLive))}`,
-      clear: () => update("maxLive", ""),
-    });
   if (filters.minViews)
     appliedFilters.push({
       label: `Avg. Views ≥ ${formatNumber(Number(filters.minViews))}`,
       clear: () => update("minViews", ""),
-    });
-  if (filters.maxViews)
-    appliedFilters.push({
-      label: `Avg. Views ≤ ${formatNumber(Number(filters.maxViews))}`,
-      clear: () => update("maxViews", ""),
     });
   if (filters.hasContact)
     appliedFilters.push({
@@ -868,50 +858,100 @@ export default function DiscoverPage() {
             </FilterGroup>
 
             <FilterGroup label="Average Concurrent Viewers">
-              <span className="filter-hint">Twitch & Kick live average</span>
-              <div className="range-inputs">
+              <div className="slider-filter-head">
+                <span className="filter-hint">Twitch & Kick live average</span>
+                <span className={`slider-count-badge ${filters.minLive ? "active" : ""}`}>
+                  {filters.minLive ? `≥ ${formatNumber(Number(filters.minLive))}` : "Any"}
+                </span>
+              </div>
+              <div className="range-slider-container">
                 <input
-                  aria-label="Minimum average concurrent viewers"
-                  type="number"
+                  aria-label="Desirable average concurrent viewers scroller"
+                  type="range"
                   min="0"
-                  className="filter-input"
-                  value={filters.minLive}
-                  onChange={(e) => update("minLive", e.target.value)}
-                  placeholder="Min"
+                  max="80000"
+                  step="1000"
+                  className="filter-range-slider"
+                  value={filters.minLive || 0}
+                  onChange={(e) => update("minLive", e.target.value === "0" ? "" : e.target.value)}
                 />
-                <input
-                  aria-label="Maximum average concurrent viewers"
-                  type="number"
-                  min="0"
-                  className="filter-input"
-                  value={filters.maxLive}
-                  onChange={(e) => update("maxLive", e.target.value)}
-                  placeholder="Max"
-                />
+                <div className="slider-ticks">
+                  <span>0</span>
+                  <span>10K</span>
+                  <span>25K</span>
+                  <span>50K</span>
+                  <span>80K+</span>
+                </div>
+              </div>
+              <div className="slider-presets">
+                {[
+                  { label: "All", val: "" },
+                  { label: "1K+", val: "1000" },
+                  { label: "5K+", val: "5000" },
+                  { label: "15K+", val: "15000" },
+                  { label: "30K+", val: "30000" },
+                  { label: "50K+", val: "50000" },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={`slider-preset-pill ${
+                      filters.minLive === preset.val || (!filters.minLive && !preset.val) ? "active" : ""
+                    }`}
+                    onClick={() => update("minLive", preset.val)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
               </div>
             </FilterGroup>
 
             <FilterGroup label="Average Video Views">
-              <span className="filter-hint">YouTube & TikTok views per post</span>
-              <div className="range-inputs">
+              <div className="slider-filter-head">
+                <span className="filter-hint">YouTube & TikTok views per post</span>
+                <span className={`slider-count-badge ${filters.minViews ? "active" : ""}`}>
+                  {filters.minViews ? `≥ ${formatNumber(Number(filters.minViews))}` : "Any"}
+                </span>
+              </div>
+              <div className="range-slider-container">
                 <input
-                  aria-label="Minimum average video views"
-                  type="number"
+                  aria-label="Desirable average video views scroller"
+                  type="range"
                   min="0"
-                  className="filter-input"
-                  value={filters.minViews}
-                  onChange={(e) => update("minViews", e.target.value)}
-                  placeholder="Min"
+                  max="3000000"
+                  step="25000"
+                  className="filter-range-slider"
+                  value={filters.minViews || 0}
+                  onChange={(e) => update("minViews", e.target.value === "0" ? "" : e.target.value)}
                 />
-                <input
-                  aria-label="Maximum average video views"
-                  type="number"
-                  min="0"
-                  className="filter-input"
-                  value={filters.maxViews}
-                  onChange={(e) => update("maxViews", e.target.value)}
-                  placeholder="Max"
-                />
+                <div className="slider-ticks">
+                  <span>0</span>
+                  <span>250K</span>
+                  <span>1M</span>
+                  <span>2M</span>
+                  <span>3M+</span>
+                </div>
+              </div>
+              <div className="slider-presets">
+                {[
+                  { label: "All", val: "" },
+                  { label: "50K+", val: "50000" },
+                  { label: "250K+", val: "250000" },
+                  { label: "500K+", val: "500000" },
+                  { label: "1M+", val: "1000000" },
+                  { label: "2M+", val: "2000000" },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={`slider-preset-pill ${
+                      filters.minViews === preset.val || (!filters.minViews && !preset.val) ? "active" : ""
+                    }`}
+                    onClick={() => update("minViews", preset.val)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
               </div>
             </FilterGroup>
 

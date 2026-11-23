@@ -647,40 +647,49 @@ h1 { color: #17213a; font-size: 30px; letter-spacing: -1px; }
 .filters-layout { gap: 16px; grid-template-columns: 248px minmax(0,1fr); }
 .filter-card {
   align-self: start;
-  border-radius: 15px;
-  max-height: calc(100vh - 95px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 17px;
+  border-radius: 16px;
   position: sticky;
-  scrollbar-color: #2e8b57 #eef4f0;
-  scrollbar-width: thin;
-  top: 78px;
-}
-.filter-card::-webkit-scrollbar {
-  width: 7px;
-}
-.filter-card::-webkit-scrollbar-track {
-  background: #f1f6f2;
-  border-radius: 8px;
-}
-.filter-card::-webkit-scrollbar-thumb {
-  background: #2e8b57;
-  border-radius: 8px;
-}
-.filter-card::-webkit-scrollbar-thumb:hover {
-  background: #22673f;
+  top: 76px;
+  padding: 16px 14px 10px 16px;
+  max-height: calc(100vh - 92px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .filter-card .filter-head {
   background: #ffffff;
-  border-bottom-color: #ececf4;
-  margin-bottom: 15px;
-  margin-top: -3px;
-  padding-bottom: 13px;
-  position: sticky;
-  top: -17px;
-  z-index: 2;
+  border-bottom: 1px solid #ececf4;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.filter-card .filter-groups {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: calc(100vh - 165px);
+  padding-right: 6px;
+  padding-bottom: 40px;
+  scrollbar-color: #2e8b57 #eef4f0;
+  scrollbar-width: thin;
+}
+.filter-card .filter-groups::-webkit-scrollbar {
+  width: 6px;
+}
+.filter-card .filter-groups::-webkit-scrollbar-track {
+  background: #f1f6f2;
+  border-radius: 8px;
+}
+.filter-card .filter-groups::-webkit-scrollbar-thumb {
+  background: #2e8b57;
+  border-radius: 8px;
+}
+.filter-card .filter-groups::-webkit-scrollbar-thumb:hover {
+  background: #22673f;
 }
 .filter-head strong { color: #25314e; font-size: 12px; }
 .filter-head button { color: #6254c8; font-size: 10px; font-weight: 700; }
@@ -3393,5 +3402,117 @@ option { background: #f6fbf4; color: #274c31; }
   border-color: #18582f;
   transform: translateY(-1px);
 }
+
+/* ========================================================
+   Desirable Count Scroller (Range Slider) in Discover Filters
+   ======================================================== */
+.slider-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.slider-count-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #f1f4f2;
+  color: #556b5d;
+  font-variant-numeric: tabular-nums;
+  transition: all 0.15s ease;
+}
+
+.slider-count-badge.active {
+  background: #eef8f0;
+  color: #1e6b37;
+  border: 1px solid #c5e4cd;
+}
+
+.range-slider-container {
+  padding: 4px 0 2px;
+}
+
+.filter-range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: #e2e8e4;
+  border-radius: 99px;
+  outline: none;
+  cursor: pointer;
+  margin: 6px 0 3px;
+  transition: background 0.15s ease;
+}
+
+.filter-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #1f6f3b;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.filter-range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+  background: #18582f;
+}
+
+.filter-range-slider::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #1f6f3b;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #8c9b91;
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+.slider-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.slider-preset-pill {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #f4f6f4;
+  border: 1px solid #e1e6e2;
+  color: #536458;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.slider-preset-pill:hover {
+  background: #e8eee9;
+  border-color: #cbd5cd;
+}
+
+.slider-preset-pill.active {
+  background: #238636;
+  border-color: #238636;
+  color: #ffffff;
+}
+
 
 
