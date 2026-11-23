@@ -253,13 +253,13 @@ export async function testSupabaseConnection(override?: SupabaseConfigOverride):
       .select("*", { count: "exact", head: true });
 
     if (error) {
-      if (error.code === "42P01") {
+      if (error.code === "42P01" || error.code === "PGRST205" || error.message?.includes("schema cache")) {
         // Table does not exist
         return {
           connected: true,
           tableExists: false,
           creatorCount: 0,
-          message: "Supabase connected successfully, but the 'creators' table has not been created yet. Run the SQL schema to create tables.",
+          message: "Supabase connected successfully! However, the 'creators' table has not been created yet. Run the SQL schema in Supabase SQL Editor to create tables.",
         };
       }
       return {
