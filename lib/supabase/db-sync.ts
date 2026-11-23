@@ -1,15 +1,30 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@supabase/supabase-js";
 import type { Creator, PlatformAccount, MetricSnapshot, AudienceInsight } from "@/lib/model";
+
+export type SupabaseConfigOverride = { url?: string; key?: string };
+
+function resolveSupabaseClient(override?: SupabaseConfigOverride) {
+  if (override?.url && override?.key) {
+    return createClient(override.url, override.key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return getSupabaseAdmin();
+}
 
 /**
  * Save an array of creators and their platform accounts to Supabase
  */
-export async function saveCreatorsToSupabase(creators: Creator[]): Promise<{
+export async function saveCreatorsToSupabase(
+  creators: Creator[],
+  override?: SupabaseConfigOverride,
+): Promise<{
   success: boolean;
   inserted: number;
   error?: string;
 }> {
-  const supabase = getSupabaseAdmin();
+  const supabase = resolveSupabaseClient(override);
   if (!supabase) {
     return { success: false, inserted: 0, error: "Supabase credentials are not configured on the server." };
   }
@@ -110,8 +125,8 @@ export async function saveCreatorsToSupabase(creators: Creator[]): Promise<{
 /**
  * Load all creators with their platform accounts and snapshots from Supabase
  */
-export async function loadCreatorsFromSupabase(): Promise<Creator[]> {
-  const supabase = getSupabaseAdmin();
+export async function loadCreatorsFromSupabase(override?: SupabaseConfigOverride): Promise<Creator[]> {
+  const supabase = resolveSupabaseClient(override);
   if (!supabase) return [];
 
   try {
@@ -216,13 +231,13 @@ export async function loadCreatorsFromSupabase(): Promise<Creator[]> {
 /**
  * Test Supabase connectivity and schema existence
  */
-export async function testSupabaseConnection(): Promise<{
+export async function testSupabaseConnection(override?: SupabaseConfigOverride): Promise<{
   connected: boolean;
   tableExists: boolean;
   creatorCount: number;
   message: string;
 }> {
-  const supabase = getSupabaseAdmin();
+  const supabase = resolveSupabaseClient(override);
   if (!supabase) {
     return {
       connected: false,

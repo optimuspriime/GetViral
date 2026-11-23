@@ -125,7 +125,11 @@ export default function SettingsPage() {
   async function checkServerDbStatus() {
     setCheckingDb(true);
     try {
-      const res = await fetch("/api/database/status");
+      const res = await fetch("/api/database/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: supabaseUrl.trim(), key: supabaseAnonKey.trim() }),
+      });
       const data = await res.json();
       setDbLiveStatus(data);
       if (data.connected && data.tableExists) {
@@ -148,7 +152,11 @@ export default function SettingsPage() {
       const res = await fetch("/api/database/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: 50 }),
+        body: JSON.stringify({
+          url: supabaseUrl.trim(),
+          key: supabaseAnonKey.trim(),
+          limit: 50,
+        }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
