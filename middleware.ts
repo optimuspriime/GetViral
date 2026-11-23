@@ -28,48 +28,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
-  // 3. Check Supabase session if credentials are set
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    // In local / workspace mode without Supabase, allow access
-    return NextResponse.next({ request });
-  }
-
-  let response = NextResponse.next({ request });
-  try {
-    const supabase = createServerClient(url, key, {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll(cookiesToSet: Parameters<SetAllCookies>[0]) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
-      },
-    });
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      return response;
-    }
-  } catch (error) {
-    console.warn("Supabase session verification error:", error);
-  }
-
-  // 4. Redirect unauthenticated requests on protected routes to /auth
-  const destination = request.nextUrl.clone();
-  destination.pathname = "/auth";
-  destination.searchParams.set("next", pathname);
-  return NextResponse.redirect(destination);
+  // 3. Allow seamless guest exploration for any visitor (auto-assigns guest session cookie)
+  const guestResponse = NextResponse.next({ request });
+  guestResponse.cookies.set("mosaic_user_session", "guest@mosaicscout.com", {
+    path: "/",
+    maxAge: 2592000,
+    sameSite: "lax",
+  });
+  return guestResponse;
 }
 
 export const config = {

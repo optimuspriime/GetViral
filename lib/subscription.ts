@@ -94,7 +94,8 @@ export interface UserSubscriptionState {
 
 export type UserRole = "viewer" | "creator";
 
-const SUBSCRIPTION_STORAGE_PREFIX = "mosaic_subscription_v1";
+const GLOBAL_SUBSCRIPTION_KEY = "mosaic_active_subscription_v2";
+const SUBSCRIPTION_STORAGE_PREFIX = "mosaic_subscription_v2";
 const ROLE_STORAGE_PREFIX = "mosaic_user_role_v1";
 
 export function getDefaultSubscription(planId: SubscriptionPlanId = "free"): UserSubscriptionState {
@@ -109,24 +110,47 @@ export function getDefaultSubscription(planId: SubscriptionPlanId = "free"): Use
 
 export function loadUserSubscription(userEmail?: string | null): UserSubscriptionState {
   if (typeof window === "undefined") return getDefaultSubscription("free");
-  const key = `${SUBSCRIPTION_STORAGE_PREFIX}:${userEmail ?? "guest"}`;
   try {
-    const raw = window.localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.planId) {
+    const isSpecial = !userEmail || userEmail === "guest" || userEmail === "primary" || userEmail.includes("guest@");
+    
+    // 1. Check user-specific key if provided and not a generic guest
+    if (!isSpecial && userEmail) {
+      const userRaw = window.localStorage.getItem(`${SUBSCRIPTION_STORAGE_PREFIX}:${userEmail}`);
+      if (userRaw) {
+        const parsed = JSON.parse(userRaw);
+        if (parsed && typeof parsed.searchesRemaining === "number") {
+          return parsed;
+        }
+      }
+    }
+
+    // 2. Check global active key
+    const globalRaw = window.localStorage.getItem(GLOBAL_SUBSCRIPTION_KEY);
+    if (globalRaw) {
+      const parsed = JSON.parse(globalRaw);
+      if (parsed && typeof parsed.searchesRemaining === "number") {
         return parsed;
       }
     }
   } catch {}
-  return getDefaultSubscription("free");
+
+  const initial = getDefaultSubscription("free");
+  try {
+    window.localStorage.setItem(GLOBAL_SUBSCRIPTION_KEY, JSON.stringify(initial));
+  } catch {}
+  return initial;
 }
 
 export function saveUserSubscription(subscription: UserSubscriptionState, userEmail?: string | null): void {
   if (typeof window === "undefined") return;
-  const key = `${SUBSCRIPTION_STORAGE_PREFIX}:${userEmail ?? "guest"}`;
   try {
-    window.localStorage.setItem(key, JSON.stringify(subscription));
+    // Always persist globally
+    window.localStorage.setItem(GLOBAL_SUBSCRIPTION_KEY, JSON.stringify(subscription));
+
+    // Also persist for specific user if logged in
+    if (userEmail && userEmail !== "guest" && userEmail !== "primary") {
+      window.localStorage.setItem(`${SUBSCRIPTION_STORAGE_PREFIX}:${userEmail}`, JSON.stringify(subscription));
+    }
   } catch {}
 }
 

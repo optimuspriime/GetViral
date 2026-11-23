@@ -3192,3 +3192,206 @@ option { background: #f6fbf4; color: #274c31; }
   }
 }
 
+/* ========================================================
+   Cookie Consent Banner
+   ======================================================== */
+.cookie-banner-wrap {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  max-width: 440px;
+  width: calc(100% - 48px);
+  z-index: 99999;
+  animation: cookieSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cookieSlideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.cookie-banner-card {
+  background: #141f18;
+  background: linear-gradient(145deg, #16241b, #0f1812);
+  border: 1px solid rgba(110, 184, 126, 0.35);
+  border-radius: 18px;
+  padding: 18px 20px;
+  color: #ecf3ee;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.cookie-banner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cookie-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cookie-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(234, 179, 8, 0.16);
+  color: #facc15;
+  flex-shrink: 0;
+}
+
+.cookie-title-row strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.cookie-compliance-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+.cookie-close-btn {
+  background: transparent;
+  border: 0;
+  color: #8b9990;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.cookie-close-btn:hover {
+  color: #ffffff;
+}
+
+.cookie-banner-body {
+  font-size: 12px;
+  line-height: 1.55;
+  color: #b7c7bc;
+  margin: 12px 0 16px;
+}
+
+.cookie-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cookie-btn-accept {
+  flex: 1;
+  justify-content: center;
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  height: 34px;
+}
+
+.cookie-btn-accept:hover {
+  background: #059669;
+  border-color: #059669;
+}
+
+.cookie-btn-essential {
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #cbd5e1;
+  font-size: 12px;
+  height: 34px;
+}
+
+.cookie-btn-essential:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* ========================================================
+   Topbar Sign In Button & Side Nav Items
+   ======================================================== */
+.topbar-signin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 99px;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.topbar-signin-pill:hover {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+  color: #3730a3;
+  transform: translateY(-1px);
+}
+
+.nav-signin-link {
+  font-weight: 600;
+}
+
+.guest-signin-btn {
+  color: #4f46e5 !important;
+  font-weight: 600;
+}
+
+/* ========================================================
+   Discover Search Submit Button
+   ======================================================== */
+.search-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: #1f6f3b;
+  border: 1px solid #1f6f3b;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.search-submit-btn:hover {
+  background: #18582f;
+  border-color: #18582f;
+  transform: translateY(-1px);
+}
+
+

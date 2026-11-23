@@ -10,7 +10,7 @@ import { getCountryFlag } from "@/lib/country-detector";
 
 export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
-  const { creators } = useProspects();
+  const { creators, deductSearch } = useProspects();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +44,9 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
   ];
 
   function handleSelectCreator(id: string) {
+    if (query.trim()) {
+      deductSearch();
+    }
     onClose();
     router.push(`/creators/${id}`);
   }
@@ -67,13 +70,16 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
         setSelectedIndex((prev) => (prev - 1 + filteredCreators.length) % Math.max(1, filteredCreators.length));
       } else if (e.key === "Enter" && filteredCreators[selectedIndex]) {
         e.preventDefault();
+        if (query.trim()) {
+          deductSearch();
+        }
         onClose();
         router.push(`/creators/${filteredCreators[selectedIndex].id}`);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, selectedIndex, filteredCreators, onClose, router]);
+  }, [isOpen, selectedIndex, filteredCreators, onClose, router, query, deductSearch]);
 
   if (!isOpen) return null;
 

@@ -2,19 +2,15 @@
 
 import Link from "next/link";
 import {
-  ArrowLeft, CheckCircle2, Database, KeyRound, Lock, Mail, RefreshCw,
-  Server, ShieldCheck, Sparkles, User, AlertCircle, ChevronDown, ChevronUp, Zap
+  ArrowLeft, CheckCircle2, KeyRound, Lock, Mail, RefreshCw,
+  ShieldCheck, Sparkles, User, AlertCircle, Zap
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import {
-  getSupabaseBrowserClient,
-  getSupabaseConfig,
-  saveSupabaseConfig
-} from "@/lib/supabase/browser";
+import { useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { saveUserRole, type UserRole } from "@/lib/subscription";
 
 export default function AuthPage() {
-  const [client, setClient] = useState(() => getSupabaseBrowserClient());
+  const [client] = useState(() => getSupabaseBrowserClient());
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [role, setRole] = useState<UserRole>("viewer");
   const [email, setEmail] = useState("");
@@ -23,21 +19,6 @@ export default function AuthPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  // Supabase Configuration state
-  const [showConfig, setShowConfig] = useState(false);
-  const [supabaseUrl, setSupabaseUrl] = useState("");
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
-  const [configMessage, setConfigMessage] = useState("");
-  const [configError, setConfigError] = useState("");
-  const [testingConfig, setTestingConfig] = useState(false);
-
-  useEffect(() => {
-    const cfg = getSupabaseConfig();
-    setSupabaseUrl(cfg.url);
-    setSupabaseAnonKey(cfg.key);
-    setClient(getSupabaseBrowserClient());
-  }, []);
 
   function handleInstantLogin() {
     const cleanEmail = email.trim().toLowerCase() || "guest@mosaicscout.com";
@@ -177,45 +158,6 @@ export default function AuthPage() {
     }
   }
 
-  async function handleSaveSupabase(e: React.FormEvent) {
-    e.preventDefault();
-    setConfigError("");
-    setConfigMessage("");
-    setTestingConfig(true);
-
-    try {
-      const cleanUrl = supabaseUrl.trim();
-      const cleanKey = supabaseAnonKey.trim();
-
-      if (!cleanUrl || !cleanKey) {
-        saveSupabaseConfig("", "");
-        setClient(null);
-        setConfigMessage("Supabase credentials cleared. Using local workspace accounts.");
-        setTestingConfig(false);
-        return;
-      }
-
-      // Save credentials to browser storage
-      saveSupabaseConfig(cleanUrl, cleanKey);
-      const newClient = getSupabaseBrowserClient();
-      setClient(newClient);
-
-      if (newClient) {
-        // Test connection
-        const { error } = await newClient.auth.getSession();
-        if (error) {
-          setConfigError(`Supabase connection warning: ${error.message}`);
-        } else {
-          setConfigMessage("Successfully connected to Supabase Cloud Auth & Database!");
-        }
-      }
-    } catch (err) {
-      setConfigError(err instanceof Error ? err.message : "Failed to connect to Supabase.");
-    } finally {
-      setTestingConfig(false);
-    }
-  }
-
   const isSupabaseActive = Boolean(client);
 
   return (
@@ -234,34 +176,13 @@ export default function AuthPage() {
           {isSupabaseActive ? <ShieldCheck size={18} /> : <KeyRound size={17} />}
         </span>
 
-        <div className="eyebrow">
-          <Sparkles size={11} className="inline-icon" /> MOSAIC WORKSPACE ACCOUNTS
-        </div>
-
         <h1>{mode === "sign-in" ? "Welcome back." : "Create your account."}</h1>
 
         <p className="page-subtitle">
-          {isSupabaseActive
-            ? "Connected to Supabase Cloud Auth. Sign in to sync your workspace CRM and creator lists."
-            : "Workspace accounts active. Sign in with your work email or register below."}
+          Sign in to sync your workspace CRM, saved creator shortlists, and search quotas across devices.
         </p>
 
-        {/* Status Badge */}
-        <div className="auth-backend-status">
-          {isSupabaseActive ? (
-            <span className="status-badge status-cloud">
-              <CheckCircle2 size={12} className="text-green" />
-              <span>Supabase Cloud Connected</span>
-            </span>
-          ) : (
-            <span className="status-badge status-local">
-              <Server size={12} />
-              <span>Workspace Accounts Enabled (Local Persistence)</span>
-            </span>
-          )}
-        </div>
-
-        {/* Primary Account Form (Always Available) */}
+        {/* Primary Account Form */}
         <form onSubmit={submit} className="auth-main-form">
           {/* Role Selection */}
           <div className="form-group">
@@ -428,107 +349,6 @@ export default function AuthPage() {
               : "Already have an account? Sign in"}
           </button>
         </form>
-
-        {/* Supabase Configuration Drawer */}
-        <div className="supabase-config-drawer">
-          <button
-            type="button"
-            className="supabase-toggle-btn"
-            onClick={() => setShowConfig(!showConfig)}
-          >
-            <Database size={14} className="text-green" />
-            <span>Configure Supabase Project (Cloud Sync & Postgres)</span>
-            {showConfig ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-
-          {showConfig && (
-            <form onSubmit={handleSaveSupabase} className="supabase-config-form">
-              <p className="config-desc">
-                Connect your Supabase project URL and public Anon key to enable remote PostgreSQL
-                synchronization and Supabase Cloud Auth.
-              </p>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="sb-url">
-                  Supabase Project URL
-                </label>
-                <input
-                  id="sb-url"
-                  type="url"
-                  className="form-input"
-                  placeholder="https://your-project.supabase.co"
-                  value={supabaseUrl}
-                  onChange={(e) => setSupabaseUrl(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="sb-key">
-                  Supabase Anon Key
-                </label>
-                <input
-                  id="sb-key"
-                  type="password"
-                  className="form-input"
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  value={supabaseAnonKey}
-                  onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                />
-              </div>
-
-              {configError && (
-                <div className="auth-error-banner" role="alert">
-                  <AlertCircle size={14} />
-                  <span>{configError}</span>
-                </div>
-              )}
-
-              {configMessage && (
-                <div className="auth-success-banner" role="status">
-                  <CheckCircle2 size={14} />
-                  <span>{configMessage}</span>
-                </div>
-              )}
-
-              <div className="config-actions">
-                <button
-                  type="submit"
-                  className="button button-secondary button-sm"
-                  disabled={testingConfig}
-                >
-                  {testingConfig ? (
-                    <>
-                      <RefreshCw size={12} className="spin-icon" /> Connecting…
-                    </>
-                  ) : (
-                    "Save & Connect Supabase"
-                  )}
-                </button>
-                {supabaseUrl && (
-                  <button
-                    type="button"
-                    className="button button-sm button-ghost"
-                    onClick={() => {
-                      setSupabaseUrl("");
-                      setSupabaseAnonKey("");
-                      saveSupabaseConfig("", "");
-                      setClient(null);
-                      setConfigMessage("Disconnected Supabase. Running in workspace account mode.");
-                    }}
-                  >
-                    Clear Keys
-                  </button>
-                )}
-              </div>
-
-              <div className="supabase-guide-tip">
-                <strong>How to find your keys:</strong> In your Supabase Dashboard, go to{" "}
-                <em>Project Settings → API</em>. Copy your <code>Project URL</code> and{" "}
-                <code>anon / public</code> key.
-              </div>
-            </form>
-          )}
-        </div>
       </div>
     </div>
   );

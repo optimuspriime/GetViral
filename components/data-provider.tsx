@@ -9,7 +9,6 @@ import {
   type UserRole,
   type UserSubscriptionState,
   SUBSCRIPTION_TIERS,
-  getDefaultSubscription,
   loadUserSubscription,
   saveUserSubscription,
   loadUserRole,
@@ -140,7 +139,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
   // Subscription & Role State
-  const [subscription, setSubscription] = useState<UserSubscriptionState>(() => getDefaultSubscription("free"));
+  const [subscription, setSubscription] = useState<UserSubscriptionState>(() => loadUserSubscription());
   const [userRole, setUserRoleState] = useState<UserRole>("viewer");
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);
@@ -156,6 +155,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
     async function resolveOwner() {
+      // Auto-ensure guest session if none exists so visitor is never locked out
+      if (typeof window !== "undefined") {
+        const localUser = window.localStorage.getItem("mosaic_user_session");
+        if (!localUser) {
+          const guestSession = {
+            email: "guest@mosaicscout.com",
+            name: "Guest Explorer",
+            role: "viewer",
+            isGuest: true,
+          };
+          window.localStorage.setItem("mosaic_user_session", JSON.stringify(guestSession));
+          document.cookie = "mosaic_user_session=guest%40mosaicscout.com; path=/; max-age=2592000; SameSite=Lax";
+        }
+      }
+
       const client = getSupabaseBrowserClient();
       if (!client) {
         if (active) {
@@ -171,7 +185,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               } catch {}
             }
           }
-          setOwnerId("primary");
+          setOwnerId("guest@mosaicscout.com");
         }
         return;
       }
@@ -190,9 +204,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               }
             } catch {}
           }
-          setOwnerId("primary");
+          setOwnerId("guest@mosaicscout.com");
         } else {
-          setOwnerId("primary");
+          setOwnerId("guest@mosaicscout.com");
         }
       }
     }
@@ -546,27 +560,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const deductSearch = useCallback((): boolean => {
-    if (subscription.totalQuota === -1) {
+    const current = loadUserSubscription(ownerId);
+    if (current.totalQuota === -1) {
       return true; // Unlimited plan
     }
-    if (subscription.searchesRemaining > 0) {
-      const updated: UserSubscriptionState = {
-        ...subscription,
-        searchesRemaining: subscription.searchesRemaining - 1,
-        updatedAt: new Date().toISOString(),
-      };
-      setSubscription(updated);
-      saveUserSubscription(updated, ownerId);
-      return true;
+    if (current.searchesRemaining <= 0) {
+      setPricingModalOpen(true);
+      showToast(
+        "Search limit reached for your current plan. Please upgrade to continue searching.",
+        "error",
+      );
+      return false;
     }
-    // Limit reached
-    setPricingModalOpen(true);
-    showToast(
-      "Search limit reached for your current plan. Please upgrade to continue searching.",
-      "error",
-    );
-    return false;
-  }, [subscription, ownerId, showToast]);
+    const updated: UserSubscriptionState = {
+      ...current,
+      searchesRemaining: Math.max(0, current.searchesRemaining - 1),
+      updatedAt: new Date().toISOString(),
+    };
+    saveUserSubscription(updated, ownerId);
+    setSubscription(updated);
+    return true;
+  }, [ownerId, showToast]);
 
   const value = useMemo(
     () => ({

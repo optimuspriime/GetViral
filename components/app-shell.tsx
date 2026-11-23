@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowUpRight, Bookmark, Check, ChevronDown, Compass, LayoutDashboard,
-  LogOut, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw, Zap
+  LogOut, LogIn, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw, Zap
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useProspects } from "@/components/data-provider";
@@ -12,6 +12,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette } from "@/components/command-palette";
 import { PricingModal } from "@/components/pricing-modal";
 import { CreatorProfileModal } from "@/components/creator-profile-modal";
+import { CookieBanner } from "@/components/cookie-banner";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const navigation = [
@@ -51,6 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const accountRef = useRef<HTMLDivElement>(null);
 
   const savedCount = new Set(lists.flatMap((list) => list.creatorIds)).size;
+  const isGuest = !userEmail || userEmail === "guest@mosaicscout.com" || userEmail.startsWith("guest");
 
   useEffect(() => {
     const client = getSupabaseBrowserClient();
@@ -193,6 +195,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          {isGuest && (
+            <Link
+              href="/auth"
+              className="nav-link nav-signin-link"
+              onClick={() => setMobileOpen(false)}
+            >
+              <span className="nav-icon nav-icon-violet">
+                <LogIn size={17} strokeWidth={1.9} />
+              </span>
+              <span>Sign In</span>
+            </Link>
+          )}
         </nav>
 
         <div className="topbar-actions">
@@ -253,6 +267,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="top-search-label">Search creators</span>
             <kbd>⌘ K</kbd>
           </button>
+
+          {/* Sign In Button on Side for Guests */}
+          {isGuest && (
+            <Link
+              href="/auth"
+              className="topbar-signin-pill"
+              title="Sign In or Register to Mosaic"
+            >
+              <LogIn size={13} />
+              <span>Sign In</span>
+            </Link>
+          )}
 
           {/* Interactive Workspace Switcher */}
           <div className="workspace-relative" ref={workspaceRef}>
@@ -363,11 +389,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="account-dropdown-menu">
                 <div className="account-menu-head">
                   <div className="account-avatar-large">
-                    {userEmail ? userEmail.charAt(0).toUpperCase() : "A"}
+                    {isGuest ? "G" : userEmail ? userEmail.charAt(0).toUpperCase() : "A"}
                   </div>
                   <div className="account-info">
-                    <strong>{userEmail ? userEmail.split("@")[0] : "Alex Turner"}</strong>
-                    <small>{userEmail || "alex.turner@mosaic.io"}</small>
+                    <strong>{isGuest ? "Guest Explorer" : userEmail ? userEmail.split("@")[0] : "Alex Turner"}</strong>
+                    <small>{isGuest ? "Free Trial Workspace (50 searches)" : userEmail || "alex.turner@mosaic.io"}</small>
                   </div>
                 </div>
 
@@ -426,14 +452,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
 
                 <div className="account-menu-footer">
-                  <button
-                    className="account-signout-btn"
-                    onClick={handleSignOut}
-                    type="button"
-                  >
-                    <LogOut size={14} />
-                    <span>Sign Out</span>
-                  </button>
+                  {isGuest ? (
+                    <Link
+                      href="/auth"
+                      className="account-signout-btn guest-signin-btn"
+                      onClick={() => setAccountMenuOpen(false)}
+                    >
+                      <LogIn size={14} />
+                      <span>Sign In / Register</span>
+                    </Link>
+                  ) : (
+                    <button
+                      className="account-signout-btn"
+                      onClick={handleSignOut}
+                      type="button"
+                    >
+                      <LogOut size={14} />
+                      <span>Sign Out</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -458,6 +495,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Creator Profile Creation & Claiming Modal */}
       <CreatorProfileModal />
+
+      {/* Cookie Consent Banner */}
+      <CookieBanner />
     </div>
   );
 }

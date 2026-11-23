@@ -5,7 +5,7 @@ import {
   Bookmark, Download, Search, SlidersHorizontal, UserPlus, UserRoundSearch, X,
   Check, Sparkles, RefreshCw, Globe, Zap
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useProspects } from "@/components/data-provider";
 import { platformColors } from "@/lib/platforms";
 import type { Creator, Platform, PlatformAccount } from "@/lib/model";
@@ -81,19 +81,36 @@ export default function DiscoverPage() {
     setPricingModalOpen,
   } = useProspects();
 
-  function handleSearchInput(val: string) {
-    if (val.trim() && val.trim().length > filters.query.trim().length && val.trim().length >= 3) {
-      const allowed = deductSearch();
-      if (!allowed) return;
+  const [searchInput, setSearchInput] = useState(filters.query);
+
+  const update = useCallback(<K extends keyof Filters>(key: K, value: Filters[K]) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  const executeSearch = useCallback((queryToSearch?: string) => {
+    const val = (queryToSearch !== undefined ? queryToSearch : searchInput).trim();
+    if (!val) {
+      update("query", "");
+      return;
     }
+    const allowed = deductSearch();
+    if (!allowed) return;
     update("query", val);
-  }
+    const leftText = subscription.totalQuota === -1
+      ? "Unlimited"
+      : `${Math.max(0, subscription.searchesRemaining - 1)} searches left`;
+    showToast(`Search performed! (${leftText})`, "info");
+  }, [searchInput, deductSearch, update, subscription.totalQuota, subscription.searchesRemaining, showToast]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const qParam = params.get("q");
+    if (qParam) {
+      setSearchInput(qParam);
+    }
     setFilters((current) => ({
       ...current,
-      query: params.get("q") ?? current.query,
+      query: qParam ?? current.query,
       platform: platformsList.includes(params.get("platform") ?? "")
         ? params.get("platform")!
         : current.platform,
@@ -179,15 +196,14 @@ export default function DiscoverPage() {
     return results.slice(start, start + pageSize);
   }, [results, currentPage, pageSize]);
 
-  function update<K extends keyof Filters>(key: K, value: Filters[K]) {
-    setFilters((current) => ({ ...current, [key]: value }));
-  }
-
   const appliedFilters: { label: string; clear: () => void }[] = [];
   if (filters.query.trim())
     appliedFilters.push({
       label: `Search: ${filters.query.trim()}`,
-      clear: () => update("query", ""),
+      clear: () => {
+        setSearchInput("");
+        update("query", "");
+      },
     });
   if (filters.platform !== initialFilters.platform)
     appliedFilters.push({
@@ -561,25 +577,49 @@ export default function DiscoverPage() {
 
       {/* Discovery Controls */}
       <div className="discovery-controls">
-        <div className="search-field discovery-search">
+        <form
+          className="search-field discovery-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            executeSearch();
+          }}
+        >
           <Search size={16} />
           <input
             type="search"
             aria-label="Search creators"
             placeholder="Search creator name, channel handle, niche, or bio..."
-            value={filters.query}
-            onChange={(e) => handleSearchInput(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                executeSearch();
+              }
+            }}
           />
-          {filters.query && (
+          {searchInput && (
             <button
               className="clear-search"
-              onClick={() => update("query", "")}
+              onClick={() => {
+                setSearchInput("");
+                update("query", "");
+              }}
               aria-label="Clear search"
               type="button"
             >
               <X size={14} />
             </button>
           )}
+
+          <button
+            type="submit"
+            className="search-submit-btn"
+            title="Execute search and deduct 1 from remaining search quota"
+          >
+            <Search size={13} />
+            <span>Search</span>
+          </button>
 
           {/* Search Quota Pill */}
           <button
@@ -593,10 +633,10 @@ export default function DiscoverPage() {
             <span>
               {subscription.totalQuota === -1
                 ? "Unlimited"
-                : `${subscription.searchesRemaining} searches left`}
+                : `${subscription.searchesRemaining} searches remaining`}
             </span>
           </button>
-        </div>
+        </form>
 
         <label className="platform-select-wrap">
           <span>Platform</span>
