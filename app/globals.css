@@ -1465,14 +1465,14 @@ option { background: #f6fbf4; color: #274c31; }
 @media (min-width: 1700px) {
   .page-content { padding-left: 56px; padding-right: 56px; }
 }
-@media (max-width: 1260px) {
+@media (max-width: 1340px) {
   .app-topbar { gap: 10px; padding-left: 18px; padding-right: 18px; }
   .top-nav .nav-link { gap: 6px; padding-left: 7px; padding-right: 7px; }
   .top-nav .nav-link > span:not(.nav-icon) { font-size: 11px; }
   .topbar-actions { gap: 7px; }
   .workspace-copy small { display: none; }
 }
-@media (max-width: 1260px) {
+@media (max-width: 1340px) {
   .app-topbar { gap: 10px; grid-template-columns: max-content 38px minmax(0, 1fr); height: 68px; }
   .mobile-menu { display: inline-flex; flex: 0 0 38px; grid-column: 2; grid-row: 1; }
   .app-topbar > .brand { grid-column: 1; grid-row: 1; }
