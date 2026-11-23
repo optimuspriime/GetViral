@@ -78,16 +78,29 @@ export default function SettingsPage() {
       .getUser()
       .then(({ data, error }) => {
         if (error) {
-          console.error("Could not check Supabase authentication state.", error);
-          setAuthError(error.message);
+          const isSessionMissing =
+            error.name === "AuthSessionMissingError" ||
+            error.message?.toLowerCase().includes("auth session missing") ||
+            error.message?.toLowerCase().includes("session not found") ||
+            (error as { status?: number }).status === 400;
+          if (isSessionMissing) {
+            // Signed-out visitor is a normal expected state - do not log as application error
+            setUserEmail(null);
+          } else {
+            console.warn("Supabase auth check notice:", error.message);
+            setAuthError(error.message);
+          }
         } else {
           setUserEmail(data.user?.email ?? null);
         }
         setAuthLoading(false);
       })
       .catch((error: unknown) => {
-        console.error("Could not check Supabase authentication state.", error);
-        setAuthError("Could not verify session.");
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!msg.toLowerCase().includes("session missing")) {
+          console.warn("Supabase auth check notice:", msg);
+        }
+        setUserEmail(null);
         setAuthLoading(false);
       });
   }, []);
@@ -306,7 +319,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
           ...prev,
           [platform]: {
             status: "success",
-            message: `Verified! Successfully resolved ${platform} channel (${data.creator?.handle})`,
+            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? "Verified Catalog Snapshot"}, freshness: ${data.dataFreshness ?? "Verified Snapshot"})`,
           },
         }));
         showToast(`${platform} API connection verified!`, "success");
@@ -407,8 +420,8 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     <div className="integration-copy">
                       <div className="integration-title-line">
                         <strong>{integration.platform}</strong>
-                        <span className="live-verified-badge">
-                          <Check size={11} /> Connected
+                        <span className="live-verified-badge" style={{ backgroundColor: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                          <Check size={11} /> {integration.connectorStatus}
                         </span>
                       </div>
                       <span>{integration.setup}</span>
@@ -479,6 +492,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
               <div className="console-inputs-row">
                 <select
                   className="filter-select console-select"
+                  aria-label="Platform to test"
                   value={testConsolePlatform}
                   onChange={(e) => setTestConsolePlatform(e.target.value)}
                 >
@@ -826,7 +840,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                   </div>
 
                   <p style={{ fontSize: 12, color: "var(--muted, #8b949e)", marginBottom: 12, lineHeight: 1.5 }}>
-                    Connect Supabase to permanently store creators, accounts, and metric snapshots. No manual data uploads needed — live creator data is automatically fetched directly from YouTube, Kick, and Twitch APIs.
+                    <strong>Catalog Scope Architecture:</strong> The application master catalog contains 1,042 verified creators across 2,062 platform accounts. Supabase stores custom-added profiles, live sync overrides, and team campaign shortlists. Stored database records are automatically merged on top of the 1,042 baseline verified catalog.
                   </p>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -878,7 +892,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                       <div>{dbLiveStatus.message}</div>
                       {dbLiveStatus.tableExists && (
                         <div style={{ marginTop: 4, color: "#9ca3af" }}>
-                          Total stored creators in PostgreSQL: <strong>{dbLiveStatus.creatorCount}</strong>
+                          Supabase Stored Records: <strong>{dbLiveStatus.creatorCount}</strong> | Master Catalog: <strong>1,042 Creators (2,062 Accounts)</strong>
                         </div>
                       )}
                     </div>

@@ -14,17 +14,26 @@ export async function GET(request: Request) {
   const maxFollowers = searchParams.get("maxFollowers");
   const sort = searchParams.get("sort") || "name";
 
-  // Attempt loading from Supabase Database if connected
-  let baseList: Creator[] = REAL_CREATORS;
+  // Start with verified local catalog (1,042 creators, 2,062 accounts)
+  // Merge Supabase database records (cloud-synced / custom / updated records)
+  const creatorMap = new Map<string, Creator>();
+  for (const c of REAL_CREATORS) {
+    creatorMap.set(c.id, c);
+  }
+
   try {
     const dbCreators = await loadCreatorsFromSupabase();
     if (dbCreators && dbCreators.length > 0) {
-      baseList = dbCreators;
+      for (const dbc of dbCreators) {
+        const existing = creatorMap.get(dbc.id);
+        creatorMap.set(dbc.id, existing ? { ...existing, ...dbc } : dbc);
+      }
     }
   } catch {
     // Fallback to verified catalog
   }
 
+  const baseList: Creator[] = Array.from(creatorMap.values());
   let filtered = [...baseList];
 
   if (q) {

@@ -18,15 +18,32 @@ export async function GET(request: Request) {
 
   try {
     const creator = await provider.getCreator(handle);
+    const fetchedAt = new Date().toISOString();
+    const source = creator.source || `${platform} Verified Catalog Snapshot`;
+    const dataFreshness = creator.source?.includes("API")
+      ? "Live Platform API Response"
+      : "Verified Catalog Baseline (Snapshot)";
+
     return NextResponse.json({
       success: true,
       platform,
-      creator,
+      source,
+      fetchedAt,
+      dataFreshness,
+      providerMode: provider.mode,
+      coverageNote: provider.coverageNote,
+      creator: {
+        ...creator,
+        source,
+        fetchedAt,
+        dataFreshness,
+      },
     });
   } catch (error) {
     return NextResponse.json(
       {
         success: false,
+        platform,
         error: error instanceof Error ? error.message : "Failed to lookup creator on platform.",
       },
       { status: 500 },

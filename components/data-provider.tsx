@@ -73,7 +73,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 
 const INITIAL_DEFAULT_LIST: ProspectList = {
   id: "list-default-shortlist",
-  name: "Priority Shortlist",
+  name: "Sample Campaign Shortlist (Demo Fixture)",
   creatorIds: [
     "creator-carryminati",
     "creator-bhuvanbam",

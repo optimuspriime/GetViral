@@ -234,8 +234,8 @@ export function TrendChart({
                   name={key}
                   stroke={stroke}
                   strokeWidth={2.8}
-                  dot={{ r: 3, stroke: "#ffffff", strokeWidth: 1.5, fill: stroke }}
-                  activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: stroke }}
+                  dot={false}
+                  activeDot={{ r: 4, stroke: stroke, fill: stroke }}
                   connectNulls={false}
                   isAnimationActive={!reducedMotion}
                   animationDuration={600}

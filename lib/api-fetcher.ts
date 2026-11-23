@@ -130,11 +130,7 @@ export async function fetchLiveKickCreators(): Promise<Creator[]> {
         avatar,
         accounts: [account],
         audienceInsights: insights,
-        businessContact: {
-          email: `${slug.toLowerCase()}@kickcreators.tv`,
-          sourceUrl: `https://kick.com/${slug}`,
-          lastChecked: nowStr,
-        },
+        businessContact: null,
       });
     } catch {
       // Continue to next slug on timeout or rate limit
@@ -245,11 +241,7 @@ export async function fetchLiveYouTubeCreators(): Promise<Creator[]> {
             status: "creator_authorized",
           },
         ],
-        businessContact: {
-          email: `${channelName.toLowerCase().replace(/[^a-z0-9]/g, "")}@management.com`,
-          sourceUrl: `https://www.youtube.com/${handle}/about`,
-          lastChecked: nowStr,
-        },
+        businessContact: null,
       });
     }
   } catch {
@@ -353,11 +345,7 @@ export async function fetchLiveTwitchCreators(): Promise<Creator[]> {
             status: "public",
           },
         ],
-        businessContact: {
-          email: `${login}@twitchpartners.tv`,
-          sourceUrl: `https://www.twitch.tv/${login}`,
-          lastChecked: nowStr,
-        },
+        businessContact: null,
       });
     }
   } catch {

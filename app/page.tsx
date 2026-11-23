@@ -29,15 +29,13 @@ export default function DashboardPage() {
   const [showExplainer, setShowExplainer] = useState(false);
 
   const platformData = useMemo(() => {
-    const profiles = new Map<string, Set<string>>();
+    const counts = new Map<string, number>();
     creators.forEach((creator) =>
       creator.accounts.forEach(({ platform }) => {
-        const creatorsForPlatform = profiles.get(platform) ?? new Set<string>();
-        creatorsForPlatform.add(creator.id);
-        profiles.set(platform, creatorsForPlatform);
+        counts.set(platform, (counts.get(platform) ?? 0) + 1);
       }),
     );
-    return [...profiles].map(([name, creatorIds]) => ({ name, value: creatorIds.size }));
+    return [...counts].map(([name, value]) => ({ name, value }));
   }, [creators]);
 
   const accounts = useMemo<AccountWithCreator[]>(

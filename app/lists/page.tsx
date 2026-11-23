@@ -156,6 +156,40 @@ export default function ListsPage() {
         </div>
       </div>
 
+      {/* Demo Fixtures Notice for Visitors / Unauthenticated Users */}
+      <div
+        className="demo-fixtures-banner"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          padding: "13px 16px",
+          background: "#fffbeb",
+          border: "1px solid #fef3c7",
+          borderRadius: 10,
+          marginBottom: 16,
+          color: "#92400e",
+          fontSize: "12px",
+          lineHeight: 1.5,
+        }}
+        role="status"
+      >
+        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>ℹ️</span>
+        <div>
+          <strong style={{ display: "block", color: "#78350f", marginBottom: 2 }}>
+            Demo Campaign Shortlist (Sample Fixtures Preview)
+          </strong>
+          <span>
+            You are viewing sample CRM shortlist fixtures with demonstration notes, tags, and outreach statuses.
+            These sample records illustrate shortlist workflow and CRM staging. To create, save, and manage your private,
+            secure workspace shortlists across devices, please{" "}
+            <Link href="/auth" style={{ color: "#b45309", fontWeight: 700, textDecoration: "underline" }}>
+              Sign In
+            </Link>.
+          </span>
+        </div>
+      </div>
+
       {storageError && (
         <div className="storage-error" role="alert">
           {storageError}
@@ -219,6 +253,23 @@ export default function ListsPage() {
                 >
                   <Bookmark size={14} />
                   <span>{list.name}</span>
+                  {list.id === "list-default-shortlist" && (
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        padding: "1px 5px",
+                        borderRadius: 4,
+                        background: "#fef3c7",
+                        color: "#92400e",
+                        marginLeft: "auto",
+                        marginRight: 6,
+                      }}
+                    >
+                      Fixture
+                    </span>
+                  )}
                   <span className="list-item-count">{list.creatorIds.length}</span>
                 </button>
               ))}

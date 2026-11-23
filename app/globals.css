@@ -15,12 +15,12 @@
   --shadow: 0 8px 26px rgba(27, 45, 37, .045);
 }
 * { box-sizing: border-box; }
-html { min-width: 360px; background: var(--canvas); }
-body { margin: 0; color: var(--ink); background: var(--canvas); font: 14px/1.5 "DM Sans", sans-serif; }
+html { min-width: 320px; max-width: 100vw; overflow-x: clip; background: var(--canvas); }
+body { margin: 0; max-width: 100vw; overflow-x: clip; color: var(--ink); background: var(--canvas); font: 14px/1.5 "DM Sans", sans-serif; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
-.app-frame { min-height: 100vh; }
+.app-frame { min-height: 100vh; max-width: 100vw; overflow-x: clip; }
 .sidebar { background: #fff; border-right: 1px solid var(--line); bottom: 0; display: flex; flex-direction: column; left: 0; padding: 24px 17px 17px; position: fixed; top: 0; width: 248px; z-index: 20; }
 .brand { align-items: center; color: #202b25; display: flex; font: 800 24px/1 "Manrope", sans-serif; gap: 10px; letter-spacing: -1.2px; padding: 2px 8px 29px; }
 .brand-mark { align-items: center; background: var(--green); border-radius: 9px; color: white; display: inline-flex; height: 31px; justify-content: center; width: 31px; }
@@ -136,7 +136,7 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .chart-help-caption { border-top: 1px dashed #e3ece4; color: #657b6b; font-size: 9px; line-height: 1.5; margin: 4px 18px 8px; padding-top: 6px; }
 .chart-help-caption strong { color: #254730; }
 .dashboard-lower { display: grid; gap: 14px; grid-template-columns: 1.35fr 1fr; }
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; box-sizing: border-box; }
 .data-table { border-collapse: collapse; min-width: 650px; width: 100%; }
 .data-table th { background: #fbfcfb; border-bottom: 1px solid #edf0ed; color: #9aa29f; font-size: 9px; font-weight: 600; letter-spacing: .45px; padding: 10px 13px; text-align: left; text-transform: uppercase; white-space: nowrap; }
 .data-table td { border-bottom: 1px solid #f0f2f0; color: #48534d; font-size: 10px; padding: 11px 13px; white-space: nowrap; }
@@ -1497,31 +1497,60 @@ option { background: #f6fbf4; color: #274c31; }
   .top-nav .nav-link { min-height: 48px; }
   .mobile-workspace-switch { display: flex; justify-content: flex-start; min-height: 48px; }
   .mobile-workspace-popover { display: flex; left: 10px; position: relative; right: auto; top: auto; width: auto; }
-  .topbar-actions { grid-column: 3; grid-row: 1; margin-left: 0; }
-  .top-workspace-switch { display: none; }
+  .topbar-actions { grid-column: 3; grid-row: 1; margin-left: 0; min-width: 0; max-width: 100%; overflow: hidden; justify-content: flex-end; }
+  .top-workspace-switch, .workspace-relative { display: none !important; }
   .top-search { display: flex; height: 36px; justify-content: center; padding: 0; width: 36px; }
   .top-search span, .top-search kbd { display: none; }
   .mobile-backdrop { border: 0; bottom: 0; display: block; left: 0; position: fixed; right: 0; top: 68px; z-index: 40; }
   .route-crumb { padding-top: 12px; }
-  .main-area { min-height: calc(100vh - 68px); }
+  .main-area { min-height: calc(100vh - 68px); max-width: 100vw; overflow-x: clip; }
 }
-@media (max-width: 580px) {
-  .app-topbar { gap: 8px; grid-template-columns: max-content 34px minmax(0, 1fr); height: 62px; padding-left: 12px; padding-right: 12px; }
-  .brand { font-size: 20px; gap: 7px; }
-  .brand-mark { height: 32px; width: 32px; }
-  .brand-mark svg { height: 23px; width: 23px; }
-  .mobile-menu { flex-basis: 34px; padding: 5px; }
-  .topbar-actions { gap: 5px; }
-  .top-search { background: transparent; border: 0; padding: 0; }
+@media (max-width: 640px) {
+  .app-topbar {
+    gap: 6px;
+    grid-template-columns: max-content 34px minmax(0, 1fr);
+    height: 60px;
+    padding-left: 10px;
+    padding-right: 10px;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .brand { font-size: 18px; gap: 6px; margin-right: 0; }
+  .brand-mark { height: 28px; width: 28px; }
+  .brand-mark svg { height: 20px; width: 20px; }
+  .mobile-menu { flex-basis: 34px; padding: 4px; }
+  .topbar-actions {
+    gap: 5px;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    justify-content: flex-end;
+  }
+  .topbar-sync-btn { display: none !important; }
+  .top-search { display: none !important; }
+  .workspace-relative { display: none !important; }
+  .topbar-creator-btn .creator-btn-text { display: none; }
+  .topbar-creator-btn { padding: 4px 8px; font-size: 10px; }
+  .topbar-quota-pill { padding: 4px 7px; font-size: 10px; gap: 4px; }
+  .quota-pill-badge { display: none; }
+  .topbar-signin-pill { padding: 4px 8px; font-size: 10px; gap: 3px; }
   .demo-chip { font-size: 8px; gap: 4px; letter-spacing: .2px; padding: 4px 6px; }
-  .topbar-actions .top-avatar { height: 29px; width: 29px; }
+  .topbar-actions .top-avatar { height: 28px; width: 28px; }
   .top-workspace-popover { right: 60px; top: calc(100% + 7px); }
-  .mobile-backdrop { top: 62px; }
-  .route-crumb { padding: 10px 14px 0; }
-  .page-content { padding: 12px 14px 42px; }
+  .mobile-backdrop { top: 60px; }
+  .route-crumb { padding: 8px 12px 0; }
+  .page-content { padding: 10px 12px 36px; max-width: 100vw; box-sizing: border-box; overflow-x: clip; }
 }
-@media (max-width: 380px) {
-  .top-workspace-switch { display: none; }
+@media (max-width: 400px) {
+  .app-topbar { padding-left: 8px; padding-right: 8px; gap: 4px; }
+  .brand { font-size: 16px; gap: 5px; }
+  .brand-mark { height: 26px; width: 26px; }
+  .brand-mark svg { height: 18px; width: 18px; }
+  .mobile-menu { flex-basis: 30px; width: 30px; height: 30px; }
+  .topbar-quota-pill { padding: 3px 6px; font-size: 9.5px; }
+  .topbar-signin-pill { padding: 3px 6px; font-size: 9.5px; }
+  .topbar-actions { gap: 4px; }
   .demo-chip { font-size: 0; gap: 0; height: 27px; padding: 0 7px; }
   .demo-chip > span { height: 7px; width: 7px; }
   .demo-chip::after { color: #426832; content: "DEMO"; font-size: 8px; font-weight: 700; letter-spacing: .25px; }

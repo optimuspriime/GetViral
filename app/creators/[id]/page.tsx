@@ -3,15 +3,15 @@
 import Link from "next/link";
 import {
   ArrowLeft, ArrowUpRight, Bookmark, CircleHelp, Globe2, Mail,
-  Check, Copy, Sparkles, ExternalLink
+  Check, CheckCircle2, Copy, Sparkles, ExternalLink
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useProspects } from "@/components/data-provider";
 import { platformColors, platformMetricLabel } from "@/lib/platforms";
-import { currentFollowers, currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
+import { currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
 import type { MetricSnapshot, PlatformAccount } from "@/lib/model";
 import { getCountryFlag } from "@/lib/country-detector";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export default function CreatorProfilePage() {
   const params = useParams<{ id: string }>();
@@ -325,38 +325,78 @@ export default function CreatorProfilePage() {
             <Mail size={14} color="#97a29a" />
           </div>
 
-          {creator.businessContact ? (
-            <dl className="detail-list contact-details">
-              <Detail
-                label="Direct Email"
-                value={
-                  <a href={`mailto:${creator.businessContact.email}`} className="source-link">
-                    {creator.businessContact.email}
-                  </a>
-                }
-              />
-              <Detail
-                label="Contact Source URL"
-                value={
-                  <a
-                    className="source-link"
-                    href={creator.businessContact.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {creator.businessContact.sourceUrl}
-                    <ArrowUpRight size={11} />
-                  </a>
-                }
-              />
-              <Detail
-                label="Last Verified"
-                value={formatDate(creator.businessContact.lastChecked)}
-              />
-            </dl>
+          {creator.businessContact?.email ? (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "5px 10px",
+                  background: "#ecfdf5",
+                  border: "1px solid #d1fae5",
+                  borderRadius: 6,
+                  fontSize: "11px",
+                  color: "#065f46",
+                  fontWeight: 600,
+                  marginBottom: 12,
+                }}
+              >
+                <CheckCircle2 size={12} className="text-green" />
+                <span>Verified Public Channel Listing</span>
+              </div>
+
+              <dl className="detail-list contact-details">
+                <Detail
+                  label="Direct Email"
+                  value={
+                    <a href={`mailto:${creator.businessContact.email}`} className="source-link">
+                      {creator.businessContact.email}
+                    </a>
+                  }
+                />
+                <Detail
+                  label="Contact Source URL"
+                  value={
+                    creator.businessContact.sourceUrl ? (
+                      <a
+                        className="source-link"
+                        href={creator.businessContact.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {creator.businessContact.sourceUrl}
+                        <ArrowUpRight size={11} />
+                      </a>
+                    ) : (
+                      <span>Official Channel Bio</span>
+                    )
+                  }
+                />
+                <Detail
+                  label="Verification Timestamp"
+                  value={formatDateTime(creator.businessContact.lastChecked)}
+                />
+              </dl>
+
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "8px 10px",
+                  background: "#fffbeb",
+                  border: "1px solid #fef3c7",
+                  borderRadius: 6,
+                  fontSize: "10.5px",
+                  color: "#92400e",
+                  lineHeight: 1.45,
+                }}
+              >
+                ⚠️ <strong>Outreach Notice:</strong> Confirm this address on the creator&apos;s live channel page before initiating commercial agreements.
+              </div>
+            </>
           ) : (
             <p className="profile-empty">
-              Direct email listed on official channel page or social media bio.
+              No verified public email address on record. Please refer to official platform links below.
             </p>
           )}
 
@@ -389,7 +429,8 @@ export default function CreatorProfilePage() {
 
 function AccountMetricCards({ account }: { account: PlatformAccount }) {
   const unit = account.platform === "YouTube" ? "subscribers" : "followers";
-  const followers = currentFollowers(account);
+  const followerSnapshot = latestMetric(account, "followers");
+  const followers = followerSnapshot?.value ?? null;
   const reach = currentReach(account);
   const reachMetric = reachMetricName(account);
   const snapshot = reachMetric ? latestMetric(account, reachMetric) : undefined;
@@ -406,7 +447,9 @@ function AccountMetricCards({ account }: { account: PlatformAccount }) {
           <div className="metric-value">
             {followers === null ? "—" : formatNumber(followers)}
           </div>
-          <div className="metric-sub">{unit} · verified snapshot</div>
+          <div className="metric-sub">
+            {unit} · {followerSnapshot?.source ?? "Verified Platform API"} ({formatDate(followerSnapshot?.collectedAt ?? new Date().toISOString())})
+          </div>
         </div>
         <div>
           <div className="metric-label">{platformMetricLabel(account.platform, "reach")}</div>
@@ -425,6 +468,23 @@ function AccountMetricCards({ account }: { account: PlatformAccount }) {
 }
 
 function AccountSnapshots({ account }: { account: PlatformAccount }) {
+  // Sort descending and deduplicate by (metricName + observation date) so no conflicting same-day rows appear
+  const sortedSnapshots = useMemo(() => {
+    const sorted = [...account.snapshots].sort(
+      (a, b) => new Date(b.collectedAt).getTime() - new Date(a.collectedAt).getTime()
+    );
+    const seen = new Set<string>();
+    const deduplicated: MetricSnapshot[] = [];
+    for (const snap of sorted) {
+      const dateKey = `${snap.metricName}:${new Date(snap.collectedAt).toISOString().split("T")[0]}`;
+      if (!seen.has(dateKey)) {
+        seen.add(dateKey);
+        deduplicated.push(snap);
+      }
+    }
+    return deduplicated;
+  }, [account.snapshots]);
+
   return (
     <div className="snapshot-section">
       <div className="snapshot-heading">
@@ -439,16 +499,16 @@ function AccountSnapshots({ account }: { account: PlatformAccount }) {
         <table className="snapshot-table">
           <thead>
             <tr>
-              <th>Observation Date</th>
+              <th>Observation Timestamp</th>
               <th>Tracked Metric</th>
               <th>Recorded Value</th>
               <th>Measurement Window / Source</th>
             </tr>
           </thead>
           <tbody>
-            {account.snapshots.map((snapshot: MetricSnapshot) => (
+            {sortedSnapshots.map((snapshot: MetricSnapshot) => (
               <tr key={snapshot.id}>
-                <td>{formatDate(snapshot.collectedAt)}</td>
+                <td>{formatDateTime(snapshot.collectedAt)}</td>
                 <td>{metricName(snapshot.metricName)}</td>
                 <td>
                   <strong>
@@ -505,5 +565,19 @@ function formatDate(value: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
   });
 }

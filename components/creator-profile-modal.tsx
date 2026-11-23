@@ -397,6 +397,7 @@ export function CreatorProfileModal() {
                 <label className="field-label">Primary Category</label>
                 <select
                   className="form-select"
+                  aria-label="Primary Category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                 >
@@ -412,6 +413,7 @@ export function CreatorProfileModal() {
                 <label className="field-label">Primary Country</label>
                 <select
                   className="form-select"
+                  aria-label="Primary Country"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
                 >
@@ -427,6 +429,7 @@ export function CreatorProfileModal() {
                 <label className="field-label">Primary Language</label>
                 <select
                   className="form-select"
+                  aria-label="Primary Language"
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
                 >

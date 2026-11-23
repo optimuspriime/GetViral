@@ -50,6 +50,51 @@ const initialFilters: Filters = {
 
 const platformsList = ["All platforms", "YouTube", "Twitch", "Kick", "TikTok", "Instagram"];
 
+function getEmptyFilterGuidance(filters: Filters): string {
+  const suggestions: string[] = [];
+
+  if (filters.query.trim()) {
+    suggestions.push(`checking for typos in "${filters.query.trim()}"`);
+  }
+  if (filters.minFollowers || filters.maxFollowers) {
+    suggestions.push("widening your follower range");
+  }
+  if (filters.minLive || filters.maxLive) {
+    suggestions.push("adjusting the concurrent live viewer threshold");
+  }
+  if (filters.minViews || filters.maxViews) {
+    suggestions.push("adjusting the minimum video views count");
+  }
+  if (filters.country) {
+    suggestions.push(`clearing the country filter (${filters.country})`);
+  }
+  if (filters.category && filters.category !== "All categories") {
+    suggestions.push(`selecting another category instead of "${filters.category}"`);
+  }
+  if (filters.language && filters.language !== "All languages") {
+    suggestions.push(`clearing the language filter (${filters.language})`);
+  }
+  if (filters.audienceCountry) {
+    suggestions.push(`clearing the audience geography filter (${filters.audienceCountry})`);
+  }
+  if (filters.hasContact) {
+    suggestions.push("unchecking 'Direct email available'");
+  }
+  if (filters.platform && filters.platform !== "All platforms") {
+    suggestions.push(`switching from ${filters.platform} to "All platforms"`);
+  }
+
+  if (suggestions.length === 0) {
+    return "Try adjusting your search query or resetting filters.";
+  }
+
+  if (suggestions.length === 1) {
+    return `Try ${suggestions[0]}.`;
+  }
+
+  return `Try ${suggestions.slice(0, 2).join(" or ")}.`;
+}
+
 export default function DiscoverPage() {
   const router = useRouter();
   const [filters, setFilters] = useState(initialFilters);
@@ -801,6 +846,7 @@ export default function DiscoverPage() {
             <FilterGroup label="Category">
               <select
                 className="filter-select"
+                aria-label="Filter by category"
                 value={filters.category}
                 onChange={(e) => update("category", e.target.value)}
               >
@@ -814,6 +860,7 @@ export default function DiscoverPage() {
             <FilterGroup label="Creator Country">
               <select
                 className="filter-select"
+                aria-label="Filter by creator country"
                 value={filters.country}
                 onChange={(e) => update("country", e.target.value)}
               >
@@ -958,6 +1005,7 @@ export default function DiscoverPage() {
             <FilterGroup label="Language">
               <select
                 className="filter-select"
+                aria-label="Filter by language"
                 value={filters.language}
                 onChange={(e) => update("language", e.target.value)}
               >
@@ -972,6 +1020,7 @@ export default function DiscoverPage() {
               <FilterGroup label="Audience Geography">
                 <select
                   className="filter-select"
+                  aria-label="Filter by audience geography"
                   value={filters.audienceCountry}
                   onChange={(e) => update("audienceCountry", e.target.value)}
                 >
@@ -1222,6 +1271,7 @@ export default function DiscoverPage() {
                     <select
                       className="sort-select"
                       style={{ marginLeft: 8 }}
+                      aria-label="Items per page"
                       value={pageSize}
                       onChange={(e) => {
                         setPageSize(Number(e.target.value));
@@ -1242,7 +1292,7 @@ export default function DiscoverPage() {
                   <UserRoundSearch size={22} />
                 </span>
                 <strong>No creators match your active filters</strong>
-                <p>Try widening follower ranges or resetting platform selections.</p>
+                <p>{getEmptyFilterGuidance(filters)}</p>
                 <button
                   className="button button-secondary button-sm"
                   onClick={() => setFilters(initialFilters)}
@@ -1285,6 +1335,7 @@ export default function DiscoverPage() {
                   Platform
                   <select
                     className="filter-select"
+                    aria-label="Platform to query"
                     value={importPlatform}
                     onChange={(e) => setImportPlatform(e.target.value as Platform)}
                   >
@@ -1398,6 +1449,7 @@ export default function DiscoverPage() {
                       </label>
                       <select
                         className="filter-select"
+                        aria-label="Creator Country"
                         style={{ width: "100%", padding: "0.35rem 0.5rem", fontSize: "0.82rem" }}
                         value={importResult.creatorCountry || "India"}
                         onChange={(e) => {
@@ -1440,6 +1492,7 @@ export default function DiscoverPage() {
                       </label>
                       <select
                         className="filter-select"
+                        aria-label="Creator Category"
                         style={{ width: "100%", padding: "0.35rem 0.5rem", fontSize: "0.82rem" }}
                         value={importResult.category || "Entertainment"}
                         onChange={(e) => {
@@ -1485,6 +1538,7 @@ export default function DiscoverPage() {
                       </label>
                       <select
                         className="filter-select"
+                        aria-label="Creator Primary Language"
                         style={{ width: "100%", padding: "0.35rem 0.5rem", fontSize: "0.82rem" }}
                         value={importResult.language || "Hindi"}
                         onChange={(e) => {
