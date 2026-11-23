@@ -19,6 +19,7 @@ export default function CreatorProfilePage() {
     useProspects();
   const [copied, setCopied] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
+  const [selectedObsPlatform, setSelectedObsPlatform] = useState<string>("All");
 
   const creator = creators.find((item) => item.id === params.id);
   if (!creator) {
@@ -213,9 +214,52 @@ export default function CreatorProfilePage() {
             <CircleHelp size={15} color="#97a29a" />
           </div>
 
-          {creator.accounts.map((account) => (
-            <AccountSnapshots key={account.id} account={account} />
-          ))}
+          {/* Platform Selector Scroller */}
+          <div
+            className="observations-platform-scroller"
+            role="tablist"
+            aria-label="Filter observations by platform"
+          >
+            {["All", ...Array.from(new Set(creator.accounts.map((a) => a.platform)))].map(
+              (plat) => {
+                const isActive = selectedObsPlatform === plat;
+                const count =
+                  plat === "All"
+                    ? creator.accounts.reduce((sum, a) => sum + a.snapshots.length, 0)
+                    : creator.accounts.find((a) => a.platform === plat)?.snapshots.length ?? 0;
+                const color =
+                  plat === "All"
+                    ? "#2d7544"
+                    : platformColors[plat as keyof typeof platformColors] ?? "#2d7544";
+
+                return (
+                  <button
+                    key={plat}
+                    type="button"
+                    className={`obs-platform-pill ${isActive ? "active" : ""}`}
+                    style={isActive ? { borderColor: color, color: color } : {}}
+                    onClick={() => setSelectedObsPlatform(plat)}
+                  >
+                    {plat !== "All" && (
+                      <span className="obs-dot" style={{ background: color }} />
+                    )}
+                    <span>{plat}</span>
+                    <span className="obs-count">{count}</span>
+                  </button>
+                );
+              },
+            )}
+          </div>
+
+          {/* Filtered Account Snapshots with Scroller */}
+          <div className="observations-scroll-container">
+            {(selectedObsPlatform === "All"
+              ? creator.accounts
+              : creator.accounts.filter((a) => a.platform === selectedObsPlatform)
+            ).map((account) => (
+              <AccountSnapshots key={account.id} account={account} />
+            ))}
+          </div>
 
           <div className="definition">
             <strong>Verification Standard:</strong> Growth snapshots represent recorded platform

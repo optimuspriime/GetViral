@@ -3,7 +3,8 @@
 import Link from "next/link";
 import {
   ArrowUpRight, Check, CircleHelp, Database, ExternalLink, KeyRound,
-  RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle
+  RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle,
+  Zap, User
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { INTEGRATIONS } from "@/lib/integrations";
@@ -11,7 +12,15 @@ import { getSupabaseBrowserClient, getSupabaseConfig, saveSupabaseConfig } from 
 import { useProspects } from "@/components/data-provider";
 
 export default function SettingsPage() {
-  const { activeWorkspace, showToast } = useProspects();
+  const {
+    activeWorkspace,
+    showToast,
+    subscription,
+    userRole,
+    setUserRole,
+    setPricingModalOpen,
+    setCreatorModalOpen,
+  } = useProspects();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
@@ -361,9 +370,127 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Right Column: Authentication, Workspace & Database */}
+        {/* Right Column: Subscription, Role & Authentication */}
         <section>
-          <div className="card settings-auth-card">
+          {/* Subscription & Search Quota Card */}
+          <div className="card settings-sub-card">
+            <div className="card-head">
+              <div>
+                <h2 className="card-title">
+                  <Zap size={14} className="text-amber" style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                  Subscription & Search Quotas
+                </h2>
+                <p className="card-caption">
+                  Active Tier: <strong>{subscription.planId.toUpperCase()}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                className="button button-primary button-sm"
+                onClick={() => setPricingModalOpen(true)}
+              >
+                Change Plan / Upgrade
+              </button>
+            </div>
+
+            <div className="quota-status-block">
+              <div className="quota-meter-head">
+                <span>Searches Remaining</span>
+                <strong>
+                  {subscription.totalQuota === -1
+                    ? "Unlimited (Enterprise)"
+                    : `${subscription.searchesRemaining} of ${subscription.totalQuota}`}
+                </strong>
+              </div>
+              {subscription.totalQuota !== -1 && (
+                <div className="progress-track" style={{ marginTop: 8 }}>
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${Math.max(
+                        5,
+                        Math.min(
+                          100,
+                          Math.round((subscription.searchesRemaining / subscription.totalQuota) * 100),
+                        ),
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
+              <p className="quota-note">
+                {subscription.totalQuota === -1
+                  ? "Your account enjoys unrestricted searches across all 5 platforms."
+                  : `Tier search allowances: Free (50), Basic (150), Premium (300), Most Premium (Unlimited).`}
+              </p>
+            </div>
+          </div>
+
+          {/* Role & Creator Studio Card */}
+          <div className="card section-spacer">
+            <div className="card-head">
+              <div>
+                <h2 className="card-title">
+                  <User size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                  Account Role & Permissions
+                </h2>
+                <p className="card-caption">
+                  Current Role: <strong>{userRole === "creator" ? "Creator / Talent" : "Brand / Marketer"}</strong>
+                </p>
+              </div>
+              {userRole === "creator" && (
+                <button
+                  type="button"
+                  className="button button-primary button-sm"
+                  onClick={() => setCreatorModalOpen(true)}
+                >
+                  <Sparkles size={13} />
+                  <span>Launch Creator Studio</span>
+                </button>
+              )}
+            </div>
+
+            <div className="role-switch-box">
+              <p className="role-explainer">
+                Switch your operational mode to unlock creator self-publishing or agency discovery workflows.
+              </p>
+
+              <div className="role-pills-row">
+                <button
+                  type="button"
+                  className={`role-pill ${userRole === "viewer" ? "active" : ""}`}
+                  onClick={() => setUserRole("viewer")}
+                >
+                  <User size={13} />
+                  <span>Brand / Marketer (Scout Mode)</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`role-pill ${userRole === "creator" ? "active" : ""}`}
+                  onClick={() => setUserRole("creator")}
+                >
+                  <Sparkles size={13} />
+                  <span>Creator / Talent (Self-Publish Mode)</span>
+                </button>
+              </div>
+
+              {userRole === "creator" && (
+                <div className="creator-role-banner">
+                  <Sparkles size={14} className="text-green" />
+                  <div>
+                    <strong>Creator Onboarding Enabled</strong>
+                    <p>
+                      You can submit your YouTube, Twitch, Kick, and Instagram metrics directly into the live catalog so verified brands can discover and sponsor your channel.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Authentication & Storage Card */}
+          <div className="card settings-auth-card section-spacer">
             <div className="card-head">
               <div>
                 <h2 className="card-title">

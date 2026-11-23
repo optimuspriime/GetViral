@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bookmark, Download, Search, SlidersHorizontal, UserPlus, UserRoundSearch, X,
-  Check, Sparkles, RefreshCw, Globe
+  Check, Sparkles, RefreshCw, Globe, Zap
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useProspects } from "@/components/data-provider";
@@ -51,6 +51,7 @@ const initialFilters: Filters = {
 const platformsList = ["All platforms", "YouTube", "Twitch", "Kick", "TikTok", "Instagram"];
 
 export default function DiscoverPage() {
+  const router = useRouter();
   const [filters, setFilters] = useState(initialFilters);
   const [sort, setSort] = useState("followers");
   const [currentPage, setCurrentPage] = useState(1);
@@ -75,7 +76,18 @@ export default function DiscoverPage() {
     showToast,
     isSyncing,
     syncAllPlatforms,
+    subscription,
+    deductSearch,
+    setPricingModalOpen,
   } = useProspects();
+
+  function handleSearchInput(val: string) {
+    if (val.trim() && val.trim().length > filters.query.trim().length && val.trim().length >= 3) {
+      const allowed = deductSearch();
+      if (!allowed) return;
+    }
+    update("query", val);
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -556,7 +568,7 @@ export default function DiscoverPage() {
             aria-label="Search creators"
             placeholder="Search creator name, channel handle, niche, or bio..."
             value={filters.query}
-            onChange={(e) => update("query", e.target.value)}
+            onChange={(e) => handleSearchInput(e.target.value)}
           />
           {filters.query && (
             <button
@@ -568,6 +580,22 @@ export default function DiscoverPage() {
               <X size={14} />
             </button>
           )}
+
+          {/* Search Quota Pill */}
+          <button
+            type="button"
+            className="search-quota-pill"
+            onClick={() => setPricingModalOpen(true)}
+            title="Click to view subscription tiers & upgrade search quota"
+            aria-label="Search Quota remaining"
+          >
+            <Zap size={12} className="text-amber" />
+            <span>
+              {subscription.totalQuota === -1
+                ? "Unlimited"
+                : `${subscription.searchesRemaining} searches left`}
+            </span>
+          </button>
         </div>
 
         <label className="platform-select-wrap">
@@ -962,9 +990,14 @@ export default function DiscoverPage() {
                           : "Reach unavailable";
 
                       return (
-                        <tr key={`${creator.id}:${account.id}`}>
+                        <tr
+                          key={`${creator.id}:${account.id}`}
+                          className="clickable-row"
+                          onClick={() => router.push(`/creators/${creator.id}`)}
+                          style={{ cursor: "pointer" }}
+                        >
                           <td>
-                            <Link href={`/creators/${creator.id}`} className="creator-cell">
+                            <div className="creator-cell">
                               <span className="creator-avatar">
                                 {creator.avatar && creator.avatar.startsWith("http") ? (
                                   <img
@@ -983,7 +1016,7 @@ export default function DiscoverPage() {
                                 <span className="creator-name">{creator.name}</span>
                                 <span className="creator-handle">{account.handle}</span>
                               </span>
-                            </Link>
+                            </div>
                           </td>
                           <td>
                             <span
@@ -1004,7 +1037,10 @@ export default function DiscoverPage() {
                             <button
                               type="button"
                               className="table-country-badge"
-                              onClick={() => update("country", creator.creatorCountry ?? "")}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                update("country", creator.creatorCountry ?? "");
+                              }}
                               title={`Filter by ${creator.creatorCountry ?? "Global"}`}
                             >
                               <span className="flag-icon">{getCountryFlag(creator.creatorCountry)}</span>
@@ -1040,6 +1076,7 @@ export default function DiscoverPage() {
                             {creator.businessContact ? (
                               <a
                                 href={`mailto:${creator.businessContact.email}`}
+                                onClick={(e) => e.stopPropagation()}
                                 title={`Verified contact: ${creator.businessContact.email}`}
                                 className="contact-badge"
                               >
@@ -1052,7 +1089,10 @@ export default function DiscoverPage() {
                           <td>
                             <button
                               className={`save-button ${saved ? "saved" : ""}`}
-                              onClick={() => toggleSaveCreator(creator.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSaveCreator(creator.id);
+                              }}
                               title={saved ? "Remove from shortlist" : "Save to shortlist"}
                               aria-label={saved ? `Saved ${creator.name}` : `Save ${creator.name}`}
                               type="button"

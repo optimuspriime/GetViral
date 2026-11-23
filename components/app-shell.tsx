@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowUpRight, Bookmark, Check, ChevronDown, Compass, LayoutDashboard,
-  LogOut, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw
+  LogOut, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw, Zap
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useProspects } from "@/components/data-provider";
 import { BrandMark } from "@/components/brand-mark";
 import { CommandPalette } from "@/components/command-palette";
+import { PricingModal } from "@/components/pricing-modal";
+import { CreatorProfileModal } from "@/components/creator-profile-modal";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const navigation = [
@@ -31,6 +33,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     showToast,
     isSyncing,
     syncAllPlatforms,
+    subscription,
+    userRole,
+    setPricingModalOpen,
+    setCreatorModalOpen,
   } = useProspects();
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -190,6 +196,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="topbar-actions">
+          {/* Creator Profile Button (Role-based) */}
+          {userRole === "creator" && (
+            <button
+              type="button"
+              className="topbar-creator-btn"
+              onClick={() => setCreatorModalOpen(true)}
+              title="Publish or update your creator profile"
+            >
+              <Sparkles size={13} />
+              <span className="creator-btn-text">My Profile</span>
+            </button>
+          )}
+
+          {/* Search Quota Indicator & Upgrade Pill */}
+          <button
+            type="button"
+            className="topbar-quota-pill"
+            onClick={() => setPricingModalOpen(true)}
+            title={`Current Plan: ${subscription.planId.toUpperCase()} (${
+              subscription.totalQuota === -1
+                ? "Unlimited"
+                : `${subscription.searchesRemaining} of ${subscription.totalQuota}`
+            } searches remaining). Click to view plans & upgrade.`}
+            aria-label="Subscription and search quota"
+          >
+            <Zap size={13} className="text-amber" />
+            <span className="quota-pill-label">
+              {subscription.totalQuota === -1
+                ? "Unlimited"
+                : `${subscription.searchesRemaining} / ${subscription.totalQuota}`}
+            </span>
+            <span className="quota-pill-badge">Plans</span>
+          </button>
+
           {/* Quick Platform Sync */}
           <button
             className="icon-button topbar-sync-btn"
@@ -210,7 +250,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
           >
             <Search size={15} />
-            <span>Search creators</span>
+            <span className="top-search-label">Search creators</span>
             <kbd>⌘ K</kbd>
           </button>
 
@@ -357,6 +397,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <Settings2 size={15} />
                     <span>Settings & APIs</span>
                   </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountMenuOpen(false);
+                      setPricingModalOpen(true);
+                    }}
+                    className="account-menu-item"
+                  >
+                    <Zap size={15} className="text-amber" />
+                    <span>Plans & Search Quotas</span>
+                  </button>
+
+                  {userRole === "creator" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setCreatorModalOpen(true);
+                      }}
+                      className="account-menu-item"
+                    >
+                      <Sparkles size={15} />
+                      <span>Edit / Claim Creator Profile</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="account-menu-footer">
@@ -386,6 +452,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Command Palette Modal */}
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
+      {/* Subscription Pricing Modal */}
+      <PricingModal />
+
+      {/* Creator Profile Creation & Claiming Modal */}
+      <CreatorProfileModal />
     </div>
   );
 }

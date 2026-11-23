@@ -4,6 +4,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { REAL_CREATORS } from "@/lib/real-creators";
 import type { Creator, MetricSnapshot, ProspectList, ProspectStatus } from "@/lib/model";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import {
+  type SubscriptionPlanId,
+  type UserRole,
+  type UserSubscriptionState,
+  SUBSCRIPTION_TIERS,
+  getDefaultSubscription,
+  loadUserSubscription,
+  saveUserSubscription,
+  loadUserRole,
+  saveUserRole,
+} from "@/lib/subscription";
 
 export interface Workspace {
   id: string;
@@ -40,6 +51,15 @@ type Store = {
   isSyncing: boolean;
   lastSyncedAt: Date | null;
   syncAllPlatforms: () => Promise<void>;
+  subscription: UserSubscriptionState;
+  userRole: UserRole;
+  setUserRole: (role: UserRole) => void;
+  upgradeSubscription: (planId: SubscriptionPlanId) => void;
+  deductSearch: () => boolean;
+  pricingModalOpen: boolean;
+  setPricingModalOpen: (open: boolean) => void;
+  creatorModalOpen: boolean;
+  setCreatorModalOpen: (open: boolean) => void;
 };
 
 const STORAGE_KEY = "mosaic-prospect-lists-v3";
@@ -118,6 +138,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
+  // Subscription & Role State
+  const [subscription, setSubscription] = useState<UserSubscriptionState>(() => getDefaultSubscription("free"));
+  const [userRole, setUserRoleState] = useState<UserRole>("viewer");
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
+  const [creatorModalOpen, setCreatorModalOpen] = useState(false);
 
   const showToast = useCallback((message: string, type: "success" | "info" | "error" = "success") => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -216,6 +242,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       } else {
         setCreators(REAL_CREATORS);
       }
+
+      // Subscription & Role
+      setSubscription(loadUserSubscription(ownerId));
+      setUserRoleState(loadUserRole(ownerId));
     } catch (e) {
       console.warn("Could not load from localStorage:", e);
     } finally {
@@ -431,6 +461,63 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [creators.length, showToast]);
 
+  const setUserRole = useCallback(
+    (role: UserRole) => {
+      setUserRoleState(role);
+      saveUserRole(role, ownerId);
+      showToast(
+        `Role set to ${role === "creator" ? "Creator (Talent)" : "Brand / Marketer"}`,
+        "info",
+      );
+    },
+    [ownerId, showToast],
+  );
+
+  const upgradeSubscription = useCallback(
+    (planId: SubscriptionPlanId) => {
+      const tier = SUBSCRIPTION_TIERS.find((t) => t.id === planId) ?? SUBSCRIPTION_TIERS[1];
+      const newSub: UserSubscriptionState = {
+        planId: tier.id,
+        searchesRemaining: tier.searchQuota === -1 ? 999999 : tier.searchQuota,
+        totalQuota: tier.searchQuota,
+        updatedAt: new Date().toISOString(),
+      };
+      setSubscription(newSub);
+      saveUserSubscription(newSub, ownerId);
+      setPricingModalOpen(false);
+      showToast(
+        `Successfully upgraded to ${tier.name}! You now have ${
+          tier.searchQuota === -1 ? "Unlimited" : tier.searchQuota
+        } searches.`,
+        "success",
+      );
+    },
+    [ownerId, showToast],
+  );
+
+  const deductSearch = useCallback((): boolean => {
+    if (subscription.totalQuota === -1) {
+      return true; // Unlimited plan
+    }
+    if (subscription.searchesRemaining > 0) {
+      const updated: UserSubscriptionState = {
+        ...subscription,
+        searchesRemaining: subscription.searchesRemaining - 1,
+        updatedAt: new Date().toISOString(),
+      };
+      setSubscription(updated);
+      saveUserSubscription(updated, ownerId);
+      return true;
+    }
+    // Limit reached
+    setPricingModalOpen(true);
+    showToast(
+      "Search limit reached for your current plan. Please upgrade to continue searching.",
+      "error",
+    );
+    return false;
+  }, [subscription, ownerId, showToast]);
+
   const value = useMemo(
     () => ({
       creators,
@@ -455,6 +542,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       isSyncing,
       lastSyncedAt,
       syncAllPlatforms,
+      subscription,
+      userRole,
+      setUserRole,
+      upgradeSubscription,
+      deductSearch,
+      pricingModalOpen,
+      setPricingModalOpen,
+      creatorModalOpen,
+      setCreatorModalOpen,
     }),
     [
       creators,
@@ -479,6 +575,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       isSyncing,
       lastSyncedAt,
       syncAllPlatforms,
+      subscription,
+      userRole,
+      setUserRole,
+      upgradeSubscription,
+      deductSearch,
+      pricingModalOpen,
+      creatorModalOpen,
     ],
   );
 

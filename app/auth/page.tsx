@@ -11,10 +11,12 @@ import {
   getSupabaseConfig,
   saveSupabaseConfig
 } from "@/lib/supabase/browser";
+import { saveUserRole, type UserRole } from "@/lib/subscription";
 
 export default function AuthPage() {
   const [client, setClient] = useState(() => getSupabaseBrowserClient());
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [role, setRole] = useState<UserRole>("viewer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -58,10 +60,11 @@ export default function AuthPage() {
             },
           });
           if (signUpError) throw signUpError;
+          saveUserRole(role, email);
           if (data.session) {
             window.localStorage.setItem(
               "mosaic_user_session",
-              JSON.stringify({ email, name: fullName.trim() || email.split("@")[0] })
+              JSON.stringify({ email, name: fullName.trim() || email.split("@")[0], role })
             );
             window.location.assign("/");
           } else {
@@ -73,9 +76,10 @@ export default function AuthPage() {
             password,
           });
           if (signInError) throw signInError;
+          saveUserRole(role, email);
           window.localStorage.setItem(
             "mosaic_user_session",
-            JSON.stringify({ email, name: email.split("@")[0] })
+            JSON.stringify({ email, name: email.split("@")[0], role })
           );
           const next = new URLSearchParams(window.location.search).get("next") ?? "/";
           window.location.assign(next.startsWith("/") && !next.startsWith("//") ? next : "/");
@@ -85,10 +89,11 @@ export default function AuthPage() {
         const trimmedEmail = email.trim().toLowerCase();
         const userName = fullName.trim() || trimmedEmail.split("@")[0];
 
-        // Store active session
+        // Store active session and role
+        saveUserRole(role, trimmedEmail);
         window.localStorage.setItem(
           "mosaic_user_session",
-          JSON.stringify({ email: trimmedEmail, name: userName, role: "Owner" })
+          JSON.stringify({ email: trimmedEmail, name: userName, role })
         );
         document.cookie = `mosaic_user_session=${encodeURIComponent(trimmedEmail)}; path=/; max-age=2592000; SameSite=Lax`;
 
@@ -201,6 +206,40 @@ export default function AuthPage() {
 
         {/* Primary Account Form (Always Available) */}
         <form onSubmit={submit} className="auth-main-form">
+          {/* Role Selection */}
+          <div className="form-group">
+            <label className="form-label">I am joining Mosaic as:</label>
+            <div className="auth-role-tabs">
+              <button
+                type="button"
+                className={`auth-role-card ${role === "viewer" ? "selected" : ""}`}
+                onClick={() => setRole("viewer")}
+              >
+                <div className="role-icon-box">
+                  <User size={16} />
+                </div>
+                <div>
+                  <strong>Brand / Marketer</strong>
+                  <p>Discover & scout creators, build campaign shortlists</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className={`auth-role-card ${role === "creator" ? "selected" : ""}`}
+                onClick={() => setRole("creator")}
+              >
+                <div className="role-icon-box creator-box">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <strong>Creator / Talent</strong>
+                  <p>Claim or publish my creator profile to get discovered</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {mode === "sign-up" && (
             <div className="form-group">
               <label className="form-label" htmlFor="full-name">
