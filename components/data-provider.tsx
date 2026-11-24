@@ -57,6 +57,7 @@ type Store = {
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
   upgradeSubscription: (planId: SubscriptionPlanId) => void;
+  hasAvailableQuota: () => boolean;
   deductSearch: () => boolean;
   pricingModalOpen: boolean;
   setPricingModalOpen: (open: boolean) => void;
@@ -130,7 +131,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const isGuest = useMemo(() => {
     if (!ownerId) return true;
-    return ownerId === "guest@mosaicscout.com" || ownerId.startsWith("guest") || ownerId.startsWith("demo-guest");
+    return (
+      ownerId === "guest@getviral.io" ||
+      ownerId === "demo-guest@getviral.io" ||
+      ownerId === "guest@mosaicscout.com" ||
+      ownerId.startsWith("guest") ||
+      ownerId.startsWith("demo-guest")
+    );
   }, [ownerId]);
 
   const isAuthenticated = !isGuest && Boolean(ownerId);
@@ -151,13 +158,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const localUser = window.localStorage.getItem("mosaic_user_session");
         if (!localUser) {
           const guestSession = {
-            email: "guest@mosaicscout.com",
+            email: "guest@getviral.io",
             name: "Guest Explorer (Demo)",
             role: "viewer",
             isGuest: true,
           };
           window.localStorage.setItem("mosaic_user_session", JSON.stringify(guestSession));
-          document.cookie = "mosaic_user_session=guest%40mosaicscout.com; path=/; max-age=2592000; SameSite=Lax";
+          document.cookie = "mosaic_user_session=guest%40getviral.io; path=/; max-age=2592000; SameSite=Lax";
         }
       }
 
@@ -176,7 +183,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               } catch {}
             }
           }
-          setOwnerId("guest@mosaicscout.com");
+          setOwnerId("guest@getviral.io");
         }
         return;
       }
@@ -197,13 +204,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 }
               } catch {}
             }
-            setOwnerId("guest@mosaicscout.com");
+            setOwnerId("guest@getviral.io");
           } else {
-            setOwnerId("guest@mosaicscout.com");
+            setOwnerId("guest@getviral.io");
           }
         }
       } catch {
-        if (active) setOwnerId("guest@mosaicscout.com");
+        if (active) setOwnerId("guest@getviral.io");
       }
     }
 
@@ -545,6 +552,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [ownerId, showToast],
   );
 
+  const hasAvailableQuota = useCallback((): boolean => {
+    const current = loadUserSubscription(ownerId);
+    if (current.totalQuota === -1) {
+      return true;
+    }
+    if (current.searchesRemaining <= 0) {
+      setPricingModalOpen(true);
+      showToast(
+        "Search limit reached for your current plan. Please upgrade to continue searching.",
+        "error",
+      );
+      return false;
+    }
+    return true;
+  }, [ownerId, showToast]);
+
   const deductSearch = useCallback((): boolean => {
     const current = loadUserSubscription(ownerId);
     if (current.totalQuota === -1) {
@@ -599,6 +622,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       userRole,
       setUserRole,
       upgradeSubscription,
+      hasAvailableQuota,
       deductSearch,
       pricingModalOpen,
       setPricingModalOpen,
@@ -635,6 +659,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       userRole,
       setUserRole,
       upgradeSubscription,
+      hasAvailableQuota,
       deductSearch,
       pricingModalOpen,
       creatorModalOpen,

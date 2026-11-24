@@ -135,7 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="auth-main">
         <Link href="/" className="auth-brand">
           <BrandMark />
-          Mosaic<span className="brand-period">.</span>
+          GetViral<span className="brand-period">.</span>
         </Link>
         {children}
       </main>
@@ -159,7 +159,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Link href="/" className="brand" onClick={() => setMobileOpen(false)}>
           <BrandMark />
           <span>
-            Mosaic<span className="brand-period">.</span>
+            GetViral<span className="brand-period">.</span>
           </span>
         </Link>
 
@@ -248,11 +248,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {/* Quick Platform Sync */}
           <button
             className="icon-button topbar-sync-btn"
-            onClick={syncAllPlatforms}
+            onClick={() => {
+              if (isGuest) {
+                showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+                return;
+              }
+              void syncAllPlatforms();
+            }}
             disabled={isSyncing}
-            title="Sync and refresh data across YouTube, Twitch, Kick, TikTok & Instagram APIs"
+            title={
+              isGuest
+                ? "Sign in as workspace owner or admin to trigger live platform sync"
+                : "Sync and refresh data across YouTube, Twitch, Kick, TikTok & Instagram APIs"
+            }
             type="button"
             aria-label="Sync all platform data"
+            style={isGuest ? { opacity: 0.65, cursor: "not-allowed" } : undefined}
           >
             <RefreshCw size={14} className={isSyncing ? "spin-icon text-green" : ""} />
           </button>
@@ -274,7 +285,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               href="/auth"
               className="topbar-signin-pill"
-              title="Sign In or Register to Mosaic"
+              title="Sign In or Register to GetViral"
             >
               <LogIn size={13} />
               <span>Sign In</span>
@@ -394,7 +405,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="account-info">
                     <strong>{isGuest ? "Guest Explorer" : userEmail ? userEmail.split("@")[0] : "Alex Turner"}</strong>
-                    <small>{isGuest ? "Free Trial Workspace (50 searches)" : userEmail || "alex.turner@mosaic.io"}</small>
+                    <small>{isGuest ? "Free Trial Workspace (50 searches)" : userEmail || "alex.turner@getviral.io"}</small>
                   </div>
                 </div>
 

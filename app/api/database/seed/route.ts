@@ -3,6 +3,26 @@ import { saveCreatorsToSupabase, testSupabaseConnection } from "@/lib/supabase/d
 import { fetchAllLiveCreators } from "@/lib/api-fetcher";
 
 export async function POST(request: Request) {
+  // Enforce server-side authorization: Reject guest or unauthenticated write attempts
+  const cookieHeader = request.headers.get("cookie") || "";
+  const isGuestCookie =
+    cookieHeader.includes("mosaic_user_session=guest") ||
+    cookieHeader.includes("mosaic_user_session=demo-guest") ||
+    cookieHeader.includes("guest%40getviral.io") ||
+    cookieHeader.includes("demo-guest%40getviral.io") ||
+    cookieHeader.includes("guest%40mosaicscout.com");
+  const hasSessionCookie = cookieHeader.includes("mosaic_user_session=");
+
+  if (isGuestCookie || !hasSessionCookie) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Unauthorized: Workspace owner or admin sign-in required to synchronize database.",
+      },
+      { status: 401 },
+    );
+  }
+
   let body: { url?: string; key?: string; limit?: number } = {};
   try {
     body = await request.json();

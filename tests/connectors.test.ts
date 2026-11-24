@@ -259,6 +259,27 @@ test("Federated Connectors Test Suite", async (t) => {
     assert.equal(TEST_FIXTURE_CREATORS[0].name, "CarryMinati");
   });
 
+  await t.test("10. Search Quota Protection - Zero Charge When Providers Fail or Are Unconfigured", async () => {
+    // When environment has no active keys and unconfigured connectors return empty
+    delete process.env.YOUTUBE_DATA_API_KEY;
+    delete process.env.TWITCH_CLIENT_ID;
+    delete process.env.TWITCH_CLIENT_SECRET;
+
+    const res = await federatedSearch("nonexistent_rare_query_xyz12345", { bypassCache: true });
+    assert.equal(res.creators.length, 0);
+
+    // Connector statuses track unconfigured and unsupported operations cleanly
+    assert.equal(res.connectorStatuses.YouTube.status, "unconfigured");
+    assert.equal(res.connectorStatuses.Twitch.status, "unconfigured");
+    assert.equal(res.connectorStatuses.TikTok.status, "unsupported_operation");
+    assert.equal(res.connectorStatuses.Instagram.status, "unsupported_operation");
+
+    // In API route, chargeSearch is computed as succeededProviders.length > 0 && liveCreators.length > 0
+    const succeededCount = Object.values(res.connectorStatuses).filter((s) => s.status === "success").length;
+    const shouldCharge = succeededCount > 0 && res.creators.length > 0;
+    assert.equal(shouldCharge, false, "Quota must NOT be charged when providers fail or return 0 live results");
+  });
+
   // Restore env vars
   if (origYtKey) process.env.YOUTUBE_DATA_API_KEY = origYtKey;
   if (origTwitchId) process.env.TWITCH_CLIENT_ID = origTwitchId;

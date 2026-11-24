@@ -106,6 +106,13 @@ export default function DiscoverPage() {
   const [liveSearchResults, setLiveSearchResults] = useState<Creator[] | null>(null);
   const [connectorStatuses, setConnectorStatuses] = useState<Record<string, { status: string; count: number; message?: string }>>({});
   const [searchProvenance, setSearchProvenance] = useState<{ source: string; isLive: boolean } | null>(null);
+  const [providerSummary, setProviderSummary] = useState<{
+    succeeded: string[];
+    failed: string[];
+    unconfigured: string[];
+    unsupported: string[];
+    chargeSearch: boolean;
+  } | null>(null);
 
   // Direct handle lookup modal state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -120,6 +127,7 @@ export default function DiscoverPage() {
     lists,
     hydrated,
     storageError,
+    isGuest,
     addCreator,
     removeCreator,
     createList,
@@ -128,6 +136,7 @@ export default function DiscoverPage() {
     isSyncing,
     syncAllPlatforms,
     subscription,
+    hasAvailableQuota,
     deductSearch,
     setPricingModalOpen,
   } = useProspects();
@@ -146,10 +155,11 @@ export default function DiscoverPage() {
         update("query", "");
         setLiveSearchResults(null);
         setSearchProvenance(null);
+        setProviderSummary(null);
         return;
       }
 
-      const allowed = deductSearch();
+      const allowed = hasAvailableQuota();
       if (!allowed) return;
 
       setIsSearching(true);
@@ -169,23 +179,50 @@ export default function DiscoverPage() {
             source: data.source || "Live Federated Platform Connectors",
             isLive: Boolean(data.isLive),
           });
+          setProviderSummary({
+            succeeded: data.succeededProviders || [],
+            failed: data.failedProviders || [],
+            unconfigured: data.unconfiguredProviders || [],
+            unsupported: data.unsupportedProviders || [],
+            chargeSearch: Boolean(data.chargeSearch),
+          });
 
-          const leftText =
-            subscription.totalQuota === -1
-              ? "Unlimited"
-              : `${Math.max(0, subscription.searchesRemaining - 1)} searches left`;
-          showToast(`Found ${data.creators.length} creators across platform APIs (${leftText})`, "info");
+          // Only charge quota if at least one provider succeeded and returned live data
+          if (data.chargeSearch) {
+            deductSearch();
+            const leftText =
+              subscription.totalQuota === -1
+                ? "Unlimited"
+                : `${Math.max(0, subscription.searchesRemaining - 1)} searches left`;
+            showToast(
+              `Found ${data.creators.length} live creators across ${(data.succeededProviders || []).join(", ") || "platforms"} (${leftText})`,
+              "info",
+            );
+          } else {
+            // Search was not charged
+            if (data.failedProviders?.length > 0 && (!data.succeededProviders || data.succeededProviders.length === 0)) {
+              showToast(
+                `All queried providers failed or require credentials. Your search credit was NOT charged.`,
+                "info",
+              );
+            } else {
+              showToast(
+                `No live creators found for "${val}". Your search credit was NOT charged.`,
+                "info",
+              );
+            }
+          }
         } else {
           setLiveSearchResults([]);
         }
       } catch {
-        showToast("Live federated search request failed", "error");
+        showToast("Live federated search request failed. Quota was NOT charged.", "error");
         setLiveSearchResults([]);
       } finally {
         setIsSearching(false);
       }
     },
-    [searchInput, deductSearch, update, filters.platform, subscription.totalQuota, subscription.searchesRemaining, showToast],
+    [searchInput, hasAvailableQuota, deductSearch, update, filters.platform, subscription.totalQuota, subscription.searchesRemaining, showToast],
   );
 
   // Parse initial query params
@@ -340,6 +377,11 @@ export default function DiscoverPage() {
     });
   }, [activeDataset, filters, sort]);
 
+  const uniqueCreatorCount = useMemo(
+    () => new Set(results.map((r) => r.creator.id)).size,
+    [results],
+  );
+
   useEffect(() => {
     setCurrentPage(1);
   }, [filters, sort]);
@@ -456,7 +498,7 @@ export default function DiscoverPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `mosaic-creators-${filters.platform.toLowerCase().replace(/\s+/g, "-")}.csv`;
+    link.download = `getviral-creators-${filters.platform.toLowerCase().replace(/\s+/g, "-")}.csv`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast("Exported creators CSV successfully!", "success");
@@ -723,42 +765,86 @@ export default function DiscoverPage() {
         </button>
       </div>
 
-      {/* Federated Search Provenance Bar */}
+      {/* Federated Search Provenance & Provider Status Bar */}
       {searchProvenance && (
         <div
+          className="search-provenance-bar"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
             background: "rgba(34, 197, 94, 0.08)",
             border: "1px solid rgba(34, 197, 94, 0.22)",
             borderRadius: 10,
-            padding: "8px 14px",
+            padding: "10px 14px",
             fontSize: 12,
             marginBottom: 14,
-            color: "#166534",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
-            <strong>Source: {searchProvenance.source}</strong>
-            <span style={{ color: "#4b6c51" }}>· Real-time platform API query</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
+              <strong style={{ color: "#166534" }}>{searchProvenance.source}</strong>
+              <span style={{ color: "#4b6c51" }}>· Real-time platform API query</span>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: providerSummary?.chargeSearch ? "#15803d" : "#68836c" }}>
+              {providerSummary?.chargeSearch ? "✓ 1 Search Quota Used" : "✓ Search Quota NOT Charged"}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {Object.entries(connectorStatuses).map(([plat, stat]) => (
-              <span
-                key={plat}
-                style={{
-                  fontSize: 11,
-                  padding: "1px 6px",
-                  borderRadius: 4,
-                  background: stat.status === "ok" ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)",
-                  color: stat.status === "ok" ? "#15803d" : "#854d0e",
-                }}
-              >
-                {plat}: {stat.status === "ok" ? `${stat.count} results` : stat.status}
-              </span>
-            ))}
+
+          {/* Provider Execution Results Badges */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#285d38" }}>Provider Status:</span>
+            {Object.entries(connectorStatuses).map(([plat, stat]) => {
+              const isSuccess = stat.status === "success" || stat.status === "ok";
+              const isUnconfigured = stat.status === "unconfigured";
+              const isUnsupported = stat.status === "unsupported_operation";
+              const isRateLimited = stat.status === "rate_limited";
+              const isError = stat.status === "error";
+
+              let bg = "rgba(100, 116, 139, 0.12)";
+              let color = "#475569";
+              let text = `${plat}: ${stat.status}`;
+
+              if (isSuccess) {
+                bg = "rgba(34, 197, 94, 0.16)";
+                color = "#15803d";
+                text = `✓ ${plat}: ${stat.count ?? 0} results`;
+              } else if (isUnconfigured) {
+                bg = "rgba(234, 179, 8, 0.14)";
+                color = "#854d0e";
+                text = `⚡ ${plat}: Unconfigured API Key`;
+              } else if (isUnsupported) {
+                bg = "rgba(56, 189, 248, 0.14)";
+                color = "#0369a1";
+                text = `ℹ ${plat}: Handle Lookup Only`;
+              } else if (isRateLimited) {
+                bg = "rgba(249, 115, 22, 0.14)";
+                color = "#c2410c";
+                text = `⏳ ${plat}: Rate Limited`;
+              } else if (isError) {
+                bg = "rgba(239, 68, 68, 0.14)";
+                color = "#b91c1c";
+                text = `✕ ${plat}: Request Error`;
+              }
+
+              return (
+                <span
+                  key={plat}
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    borderRadius: 6,
+                    background: bg,
+                    color: color,
+                    fontWeight: 500,
+                  }}
+                  title={stat.message || `Connector status for ${plat}`}
+                >
+                  {text}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -999,7 +1085,7 @@ export default function DiscoverPage() {
         <section>
           <div className="results-toolbar">
             <span className="results-count">
-              <strong>{results.length}</strong> {results.length === 1 ? "creator" : "creators"} found
+              <strong>{uniqueCreatorCount}</strong> unique {uniqueCreatorCount === 1 ? "creator" : "creators"} · <strong>{results.length}</strong> platform {results.length === 1 ? "account" : "accounts"}
               {liveSearchResults !== null && (
                 <span style={{ marginLeft: 6, color: "#166534", fontWeight: 600 }}>
                   (Live Federated Results)
@@ -1019,11 +1105,22 @@ export default function DiscoverPage() {
             <div className="results-actions">
               <button
                 className="icon-button sync-quick-btn"
-                onClick={syncAllPlatforms}
-                disabled={isSyncing}
-                title="Sync live platform data across YouTube, Twitch, Kick, TikTok & Instagram"
+                onClick={() => {
+                  if (isGuest) {
+                    showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+                    return;
+                  }
+                  void syncAllPlatforms();
+                }}
+                disabled={isGuest || isSyncing}
+                title={
+                  isGuest
+                    ? "Sign in as workspace owner or admin to trigger platform sync"
+                    : "Sync live platform data across YouTube, Twitch, Kick, TikTok & Instagram"
+                }
                 type="button"
                 aria-label="Sync all platform data"
+                style={isGuest ? { opacity: 0.65, cursor: "not-allowed" } : undefined}
               >
                 <RefreshCw size={13} className={isSyncing ? "spin-icon" : ""} />
               </button>
@@ -1055,174 +1152,332 @@ export default function DiscoverPage() {
               </div>
             ) : results.length ? (
               <>
-                <div className="table-wrap">
-                  <table className="data-table discovery-table">
-                    <thead>
-                      <tr>
-                        <th>Creator</th>
-                        <th>Platform</th>
-                        <th>Category</th>
-                        <th>Country</th>
-                        <th>Followers / Subs</th>
-                        <th>Reach Metric</th>
-                        <th>Verification & Source</th>
-                        <th>Business Email</th>
-                        <th aria-label="Save creator">Save</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedResults.map(({ creator, account }) => {
-                        const saved = savedAccountIds.has(creator.id);
-                        const followers = currentFollowers(account);
-                        const reach = currentReach(account);
-                        const reachMetric = reachMetricName(account);
-                        const reachSnapshot = reachMetric ? latestMetric(account, reachMetric) : undefined;
-                        const reachLabel =
-                          reachMetric === "avg_live_viewers"
-                            ? "Avg. live viewers"
-                            : reachMetric === "avg_video_views"
-                            ? "Avg. video views"
-                            : "Reach unavailable";
+                {/* Desktop Results Table (>= 769px) */}
+                <div className="discovery-table-wrap">
+                  <div className="table-scroll-cue">
+                    <span>← Swipe horizontally to view all columns & verification details →</span>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="data-table discovery-table">
+                      <thead>
+                        <tr>
+                          <th>Creator</th>
+                          <th>Platform</th>
+                          <th>Category</th>
+                          <th>Country</th>
+                          <th>Followers / Subs</th>
+                          <th>Reach Metric</th>
+                          <th>Verification & Source</th>
+                          <th>Business Email</th>
+                          <th aria-label="Save creator">Save</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedResults.map(({ creator, account }) => {
+                          const saved = savedAccountIds.has(creator.id);
+                          const followers = currentFollowers(account);
+                          const reach = currentReach(account);
+                          const reachMetric = reachMetricName(account);
+                          const reachSnapshot = reachMetric ? latestMetric(account, reachMetric) : undefined;
+                          const reachLabel =
+                            reachMetric === "avg_live_viewers"
+                              ? "Avg. live viewers"
+                              : reachMetric === "avg_video_views"
+                              ? "Avg. video views"
+                              : "Reach unavailable";
 
-                        const isRefreshing = refreshingCreatorId === creator.id;
+                          const isRefreshing = refreshingCreatorId === creator.id;
 
-                        return (
-                          <tr
-                            key={`${creator.id}:${account.id}`}
-                            className="clickable-row"
+                          return (
+                            <tr
+                              key={`${creator.id}:${account.id}`}
+                              className="clickable-row"
+                              onClick={() => router.push(`/creators/${creator.id}`)}
+                              style={{ cursor: "pointer" }}
+                            >
+                              <td>
+                                <div className="creator-cell">
+                                  <span className="creator-avatar">
+                                    {creator.avatar && creator.avatar.startsWith("http") ? (
+                                      <img
+                                        src={creator.avatar}
+                                        alt={creator.name}
+                                        className="avatar-table-img"
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = "none";
+                                        }}
+                                      />
+                                    ) : null}
+                                    <span>{creator.name.slice(0, 2).toUpperCase()}</span>
+                                  </span>
+                                  <span>
+                                    <span className="creator-name">{creator.name}</span>
+                                    <span className="creator-handle">{account.handle}</span>
+                                  </span>
+                                </div>
+                              </td>
+                              <td>
+                                <span
+                                  className={`platform-label platform-badge platform-${account.platform.toLowerCase()}`}
+                                >
+                                  <i
+                                    className="platform-dot"
+                                    style={{ background: platformColors[account.platform] }}
+                                  />
+                                  {account.platform}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="creator-name">{creator.category ?? "General"}</span>
+                              </td>
+                              <td>
+                                <span>
+                                  {getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Global"}
+                                </span>
+                              </td>
+                              <td>
+                                {followers === null ? (
+                                  unavailable()
+                                ) : (
+                                  <>
+                                    <strong>{formatNumber(followers)}</strong>
+                                    <span className="creator-handle">
+                                      {account.platform === "YouTube" ? "subscribers" : "followers"}
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                              <td>
+                                {reach === null ? (
+                                  unavailable()
+                                ) : (
+                                  <>
+                                    <strong>{formatNumber(reach)}</strong>
+                                    <span className="creator-handle">
+                                      {reachLabel} · {reachSnapshot?.periodLabel ?? "live"}
+                                    </span>
+                                  </>
+                                )}
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                  <span style={{ fontSize: 10, color: "#166534", fontWeight: 600 }}>
+                                    {account.snapshots[0]?.source || `${account.platform} API`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void refreshCreatorLive(account.platform, account.handle, creator.id);
+                                    }}
+                                    disabled={isRefreshing}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 3,
+                                      fontSize: 9,
+                                      padding: "2px 5px",
+                                      borderRadius: 4,
+                                      border: "1px solid rgba(80, 140, 80, 0.2)",
+                                      background: "rgba(255, 255, 255, 0.6)",
+                                      color: "#285d38",
+                                      cursor: "pointer",
+                                      width: "fit-content",
+                                    }}
+                                    title="Query provider API to refresh metrics now"
+                                  >
+                                    <RefreshCw size={9} className={isRefreshing ? "spin-icon" : ""} />
+                                    <span>{isRefreshing ? "Refreshing…" : "Refresh"}</span>
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                {creator.businessContact?.email ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                    <a
+                                      href={`mailto:${creator.businessContact.email}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      title={`Verified contact source: ${creator.businessContact.sourceUrl || "Public channel listing"}`}
+                                      className="contact-badge"
+                                    >
+                                      {creator.businessContact.email}
+                                    </a>
+                                    <small style={{ fontSize: 9, color: "var(--muted, #64748b)" }}>
+                                      Source: {creator.businessContact.sourceUrl || "Public Channel About Page"}
+                                    </small>
+                                  </div>
+                                ) : (
+                                  <span className="contact-missing">Unavailable</span>
+                                )}
+                              </td>
+                              <td>
+                                <button
+                                  className={`save-button ${saved ? "saved" : ""}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSaveCreator(creator.id);
+                                  }}
+                                  title={saved ? "Remove from shortlist" : "Save to shortlist"}
+                                  aria-label={saved ? `Saved ${creator.name}` : `Save ${creator.name}`}
+                                  type="button"
+                                >
+                                  <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Mobile Results Cards View (< 769px) */}
+                <div className="discovery-mobile-cards">
+                  {paginatedResults.map(({ creator, account }) => {
+                    const saved = savedAccountIds.has(creator.id);
+                    const followers = currentFollowers(account);
+                    const reach = currentReach(account);
+                    const reachMetric = reachMetricName(account);
+                    const reachSnapshot = reachMetric ? latestMetric(account, reachMetric) : undefined;
+                    const isRefreshing = refreshingCreatorId === creator.id;
+
+                    return (
+                      <div key={`m-${creator.id}:${account.id}`} className="creator-mobile-card">
+                        <div className="mobile-card-header">
+                          <div
+                            className="creator-cell"
                             onClick={() => router.push(`/creators/${creator.id}`)}
                             style={{ cursor: "pointer" }}
                           >
-                            <td>
-                              <div className="creator-cell">
-                                <span className="creator-avatar">
-                                  {creator.avatar && creator.avatar.startsWith("http") ? (
-                                    <img
-                                      src={creator.avatar}
-                                      alt={creator.name}
-                                      className="avatar-table-img"
-                                      referrerPolicy="no-referrer"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = "none";
-                                      }}
-                                    />
-                                  ) : null}
-                                  <span>{creator.name.slice(0, 2).toUpperCase()}</span>
-                                </span>
-                                <span>
-                                  <span className="creator-name">{creator.name}</span>
-                                  <span className="creator-handle">{account.handle}</span>
-                                </span>
-                              </div>
-                            </td>
-                            <td>
-                              <span
-                                className={`platform-label platform-badge platform-${account.platform.toLowerCase()}`}
-                              >
-                                <i
-                                  className="platform-dot"
-                                  style={{ background: platformColors[account.platform] }}
+                            <span className="creator-avatar">
+                              {creator.avatar && creator.avatar.startsWith("http") ? (
+                                <img
+                                  src={creator.avatar}
+                                  alt={creator.name}
+                                  className="avatar-table-img"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                  }}
                                 />
-                                {account.platform}
-                              </span>
-                            </td>
-                            <td>
-                              <span className="creator-name">{creator.category ?? "General"}</span>
-                            </td>
-                            <td>
-                              <span>
-                                {getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Global"}
-                              </span>
-                            </td>
-                            <td>
-                              {followers === null ? (
-                                unavailable()
-                              ) : (
-                                <>
-                                  <strong>{formatNumber(followers)}</strong>
-                                  <span className="creator-handle">
-                                    {account.platform === "YouTube" ? "subscribers" : "followers"}
+                              ) : null}
+                              <span>{creator.name.slice(0, 2).toUpperCase()}</span>
+                            </span>
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <strong className="creator-name">{creator.name}</strong>
+                                {creator.creatorCountry && (
+                                  <span style={{ fontSize: 11 }}>
+                                    {getCountryFlag(creator.creatorCountry)}
                                   </span>
-                                </>
-                              )}
-                            </td>
-                            <td>
-                              {reach === null ? (
-                                unavailable()
-                              ) : (
-                                <>
-                                  <strong>{formatNumber(reach)}</strong>
-                                  <span className="creator-handle">
-                                    {reachLabel} · {reachSnapshot?.periodLabel ?? "live"}
-                                  </span>
-                                </>
-                              )}
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                                <span style={{ fontSize: 10, color: "#166534", fontWeight: 600 }}>
-                                  {account.snapshots[0]?.source || `${account.platform} API`}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void refreshCreatorLive(account.platform, account.handle, creator.id);
-                                  }}
-                                  disabled={isRefreshing}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 3,
-                                    fontSize: 9,
-                                    padding: "2px 5px",
-                                    borderRadius: 4,
-                                    border: "1px solid rgba(80, 140, 80, 0.2)",
-                                    background: "rgba(255, 255, 255, 0.6)",
-                                    color: "#285d38",
-                                    cursor: "pointer",
-                                    width: "fit-content",
-                                  }}
-                                  title="Query provider API to refresh metrics now"
-                                >
-                                  <RefreshCw size={9} className={isRefreshing ? "spin-icon" : ""} />
-                                  <span>{isRefreshing ? "Refreshing…" : "Refresh"}</span>
-                                </button>
+                                )}
                               </div>
-                            </td>
-                            <td>
+                              <span className="creator-handle">{account.handle}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            className={`save-button ${saved ? "saved" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSaveCreator(creator.id);
+                            }}
+                            type="button"
+                            aria-label={saved ? `Remove ${creator.name}` : `Save ${creator.name}`}
+                          >
+                            <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
+                          </button>
+                        </div>
+
+                        <div className="mobile-card-meta">
+                          <span
+                            className={`platform-label platform-badge platform-${account.platform.toLowerCase()}`}
+                          >
+                            <i
+                              className="platform-dot"
+                              style={{ background: platformColors[account.platform] }}
+                            />
+                            {account.platform}
+                          </span>
+                          <span className="category-pill" style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(80,140,80,0.1)", color: "#1d472b" }}>
+                            {creator.category ?? "General"}
+                          </span>
+                          <span className="activity-pill" style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: account.activity === "Live Now" ? "rgba(239,68,68,0.15)" : "rgba(80,140,80,0.08)", color: account.activity === "Live Now" ? "#b91c1c" : "#285d38", fontWeight: 600 }}>
+                            {account.activity ?? "Active"}
+                          </span>
+                        </div>
+
+                        <div className="mobile-card-metrics-grid">
+                          <div className="mobile-metric-item">
+                            <span className="mobile-metric-label">Followers / Subs</span>
+                            <strong className="mobile-metric-value">
+                              {followers !== null
+                                ? `${formatNumber(followers)} ${account.platform === "YouTube" ? "subs" : "followers"}`
+                                : "Unavailable"}
+                            </strong>
+                          </div>
+                          <div className="mobile-metric-item">
+                            <span className="mobile-metric-label">
+                              {reachMetric === "avg_live_viewers" ? "Avg. Live Viewers" : "Avg. Video Views"}
+                            </span>
+                            <strong className="mobile-metric-value">
+                              {reach !== null ? formatNumber(reach) : "Unavailable"}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="mobile-card-provenance">
+                          <div className="provenance-row">
+                            <span className="provenance-label">Data Source:</span>
+                            <span className="provenance-val">
+                              {reachSnapshot?.source || (account.snapshots[0]?.source ? account.snapshots[0].source : `${account.platform} Official API`)}
+                            </span>
+                          </div>
+                          <div className="provenance-row">
+                            <span className="provenance-label">Public Email:</span>
+                            <span className="provenance-val">
                               {creator.businessContact?.email ? (
-                                <a
-                                  href={`mailto:${creator.businessContact.email}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  title={`Verified contact source: ${creator.businessContact.sourceUrl || "Public channel listing"}`}
-                                  className="contact-badge"
-                                >
-                                  {creator.businessContact.email}
-                                </a>
+                                <span>
+                                  <a href={`mailto:${creator.businessContact.email}`} className="email-link">
+                                    {creator.businessContact.email}
+                                  </a>
+                                  <small style={{ display: "block", color: "var(--muted)", fontSize: 9 }}>
+                                    Source: {creator.businessContact.sourceUrl || "Channel About Page"}
+                                  </small>
+                                </span>
                               ) : (
-                                <span className="contact-missing">—</span>
+                                <span className="text-muted">Unavailable</span>
                               )}
-                            </td>
-                            <td>
-                              <button
-                                className={`save-button ${saved ? "saved" : ""}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSaveCreator(creator.id);
-                                }}
-                                title={saved ? "Remove from shortlist" : "Save to shortlist"}
-                                aria-label={saved ? `Saved ${creator.name}` : `Save ${creator.name}`}
-                                type="button"
-                              >
-                                <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mobile-card-actions">
+                          <button
+                            className="button button-secondary button-sm"
+                            onClick={() => router.push(`/creators/${creator.id}`)}
+                            type="button"
+                          >
+                            View Profile
+                          </button>
+                          <button
+                            className="button button-secondary button-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void refreshCreatorLive(account.platform, account.handle, creator.id);
+                            }}
+                            disabled={isRefreshing}
+                            type="button"
+                          >
+                            <RefreshCw size={11} className={isRefreshing ? "spin-icon" : ""} />
+                            <span>{isRefreshing ? "Refreshing…" : "Refresh Live"}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Pagination Controls */}
@@ -1488,7 +1743,7 @@ function formatNumber(value: number) {
 }
 
 function unavailable() {
-  return <span className="metric-unavailable">—</span>;
+  return <span className="metric-unavailable">Unavailable</span>;
 }
 
 function csvCell(value: unknown) {

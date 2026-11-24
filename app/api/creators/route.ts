@@ -17,21 +17,8 @@ export async function GET(request: Request) {
       limit: 20,
     });
 
-    // Also search saved database creators if any
-    let dbMatches: Creator[] = [];
-    try {
-      const dbCreators = await loadCreatorsFromSupabase();
-      if (dbCreators && dbCreators.length > 0) {
-        dbMatches = dbCreators.filter(
-          (c) =>
-            c.name.toLowerCase().includes(q.toLowerCase()) ||
-            c.bio.toLowerCase().includes(q.toLowerCase()) ||
-            c.accounts.some((a) => a.handle.toLowerCase().includes(q.toLowerCase())),
-        );
-      }
-    } catch {
-      // Database query error handled gracefully
-    }
+    // DO NOT mix catalog or saved database records into live search results.
+    // Live results must strictly come from the real platform connectors.
 
     // Convert normalized creators into UI-compatible Creator format
     const liveAsCreators: Creator[] = federated.creators.map((c) => ({
@@ -92,16 +79,7 @@ export async function GET(request: Request) {
       ],
     }));
 
-    // Merge live results and saved database matches, deduplicating by handle & platform
-    const creatorMap = new Map<string, Creator>();
-    for (const c of liveAsCreators) {
-      creatorMap.set(c.id, c);
-    }
-    for (const dbc of dbMatches) {
-      creatorMap.set(dbc.id, dbc);
-    }
-
-    let filtered = Array.from(creatorMap.values());
+    let filtered = liveAsCreators;
 
     if (category && category !== "All categories") {
       filtered = filtered.filter((c) => c.category === category);
@@ -113,11 +91,39 @@ export async function GET(request: Request) {
       );
     }
 
+    // Determine which providers succeeded, failed, or were unconfigured
+    const succeededProviders: Platform[] = [];
+    const failedProviders: Platform[] = [];
+    const unconfiguredProviders: Platform[] = [];
+    const unsupportedProviders: Platform[] = [];
+
+    (Object.entries(federated.connectorStatuses) as [Platform, typeof federated.connectorStatuses[Platform]][]).forEach(
+      ([p, statusObj]) => {
+        if (statusObj.status === "success") {
+          succeededProviders.push(p);
+        } else if (statusObj.status === "error" || statusObj.status === "rate_limited") {
+          failedProviders.push(p);
+        } else if (statusObj.status === "unconfigured") {
+          unconfiguredProviders.push(p);
+        } else if (statusObj.status === "unsupported_operation") {
+          unsupportedProviders.push(p);
+        }
+      },
+    );
+
+    // Don't charge quota if every provider failed, was unconfigured, or returned 0 live results
+    const chargeSearch = succeededProviders.length > 0 && filtered.length > 0;
+
     return NextResponse.json({
       query: q,
       total: filtered.length,
       creators: filtered,
       connectorStatuses: federated.connectorStatuses,
+      succeededProviders,
+      failedProviders,
+      unconfiguredProviders,
+      unsupportedProviders,
+      chargeSearch,
       source: "Live Federated Platform Connectors",
       isLive: true,
     });

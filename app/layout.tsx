@@ -4,8 +4,8 @@ import { DataProvider } from "@/components/data-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mosaic — Creator intelligence",
-  description: "Discover, compare, and organize creators for your next campaign.",
+  title: "GetViral — Creator Intelligence & Multi-Platform Analytics",
+  description: "Discover, analyze, and partner with creators in real-time across YouTube, Twitch, Kick, TikTok, and Instagram.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

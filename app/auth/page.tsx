@@ -21,7 +21,7 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   function handleInstantGuestPreview() {
-    const cleanEmail = "demo-guest@mosaicscout.com";
+    const cleanEmail = "demo-guest@getviral.io";
     const userName = "Guest Explorer (Demo)";
     const next = new URLSearchParams(window.location.search).get("next") ?? "/";
     const targetUrl = next.startsWith("/") && !next.startsWith("//") ? next : "/";
@@ -186,7 +186,7 @@ export default function AuthPage() {
         <form onSubmit={submit} className="auth-main-form">
           {/* Role Selection */}
           <div className="form-group">
-            <label className="form-label">I am joining Mosaic as:</label>
+            <label className="form-label">I am joining GetViral as:</label>
             <div className="auth-role-tabs">
               <button
                 type="button"
@@ -348,7 +348,7 @@ export default function AuthPage() {
             }}
           >
             {mode === "sign-in"
-              ? "New to Mosaic? Create an account"
+              ? "New to GetViral? Create an account"
               : "Already have an account? Sign in"}
           </button>
         </form>

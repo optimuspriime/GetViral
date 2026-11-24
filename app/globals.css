@@ -845,19 +845,129 @@ html { min-width: 320px; }
 .chart-sparse-note { background: #f5f4ff; border-top: 1px solid #e9e6ff; color: #55517d; font-size: 10px; line-height: 1.45; padding: 8px 18px; }
 .stat-value { font-variant-numeric: tabular-nums; }
 
-@media (max-width: 850px) {
-  .discovery-table { min-width: 920px; }
-  .discovery-table th:nth-child(4), .discovery-table td:nth-child(4),
-  .discovery-table th:nth-child(7), .discovery-table td:nth-child(7),
-  .discovery-table th:nth-child(8), .discovery-table td:nth-child(8),
-  .discovery-table th:nth-child(9), .discovery-table td:nth-child(9) { display: none; }
+/* Table Scroll Cue Indicator */
+.table-scroll-cue {
+  display: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: #166534;
+  background: rgba(34, 197, 94, 0.08);
+  border-bottom: 1px solid rgba(80, 140, 80, 0.18);
+  padding: 6px 14px;
+  text-align: center;
 }
-@media (max-width: 580px) {
-  .discovery-table { min-width: 760px; }
-  .discovery-table th:nth-child(3), .discovery-table td:nth-child(3) { display: none; }
-  .dashboard-tabs { gap: 2px; margin-left: -3px; margin-right: -3px; }
-  .dashboard-tab { font-size: 11px; padding: 0 10px; }
-  .chart-sparse-note { padding-left: 12px; padding-right: 12px; }
+
+@media (min-width: 769px) and (max-width: 1280px) {
+  .table-scroll-cue {
+    display: block;
+  }
+}
+
+/* Mobile Discovery Cards View (< 769px) */
+@media (max-width: 768px) {
+  .discovery-table-wrap {
+    display: none !important;
+  }
+  .discovery-mobile-cards {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+  .creator-mobile-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(80, 140, 80, 0.2);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 2px 8px rgba(35, 79, 44, 0.06);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+  .mobile-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .mobile-card-meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .mobile-card-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    background: rgba(80, 140, 80, 0.06);
+    border: 1px solid rgba(80, 140, 80, 0.12);
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+  .mobile-metric-item {
+    display: flex;
+    flex-direction: column;
+  }
+  .mobile-metric-label {
+    font-size: 10px;
+    color: #547359;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .mobile-metric-value {
+    font-size: 13px;
+    color: #173b27;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .mobile-card-provenance {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+    border-top: 1px solid rgba(80, 140, 80, 0.1);
+    padding-top: 8px;
+  }
+  .provenance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .provenance-label {
+    color: #547359;
+    font-size: 10px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .provenance-val {
+    color: #1d472b;
+    font-size: 11px;
+    font-weight: 500;
+    text-align: right;
+  }
+  .mobile-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .mobile-card-actions .button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+@media (min-width: 769px) {
+  .discovery-mobile-cards {
+    display: none !important;
+  }
+  .discovery-table-wrap {
+    display: block !important;
+  }
 }
 
 /* Mosaic Creator Galaxy */

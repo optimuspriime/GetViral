@@ -14,6 +14,7 @@ import { useProspects } from "@/components/data-provider";
 export default function SettingsPage() {
   const {
     activeWorkspace,
+    isGuest,
     showToast,
     subscription,
     userRole,
@@ -107,6 +108,10 @@ export default function SettingsPage() {
 
   async function handleSaveSupabase(e: React.FormEvent) {
     e.preventDefault();
+    if (isGuest) {
+      showToast("Sign in required: Guest preview sessions cannot modify database credentials.", "error");
+      return;
+    }
     setSupabaseSaving(true);
     setSupabaseStatusMsg("");
     setAuthError("");
@@ -160,6 +165,10 @@ export default function SettingsPage() {
   }
 
   async function triggerSeedDatabase() {
+    if (isGuest) {
+      showToast("Sign in required: Guest preview sessions cannot trigger database synchronization.", "error");
+      return;
+    }
     setSeedingDb(true);
     try {
       const res = await fetch("/api/database/seed", {
@@ -538,7 +547,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
           <div className="notice-bar section-spacer">
             <CircleHelp size={14} />
             <span>
-              <strong>Real-Time Data Principles:</strong> Mosaic retrieves verified reach, public email
+              <strong>Real-Time Data Principles:</strong> GetViral retrieves verified reach, public email
               channels, and platform subscriber statistics through official developer APIs.
             </span>
           </div>
@@ -738,6 +747,29 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     </span>
                   </div>
 
+                  {isGuest && (
+                    <div
+                      className="notice-bar"
+                      style={{
+                        background: "rgba(234, 179, 8, 0.1)",
+                        borderColor: "rgba(234, 179, 8, 0.3)",
+                        color: "#854d0e",
+                        marginBottom: 14,
+                        padding: "8px 12px",
+                        fontSize: 12,
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <AlertCircle size={15} />
+                      <span>
+                        <strong>Guest Sandbox Mode (Read-Only):</strong> Connecting custom Supabase cloud databases and triggering data synchronization requires signing in as a workspace owner or admin.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="sb-form-group">
                     <label className="form-label" htmlFor="settings-sb-url">
                       Supabase Project URL
@@ -749,6 +781,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                       placeholder="https://xyzcompany.supabase.co"
                       value={supabaseUrl}
                       onChange={(e) => setSupabaseUrl(e.target.value)}
+                      disabled={isGuest}
                     />
                   </div>
 
@@ -763,6 +796,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                       placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                       value={supabaseAnonKey}
                       onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                      disabled={isGuest}
                     />
                   </div>
 
@@ -784,7 +818,8 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     <button
                       type="submit"
                       className="button button-primary button-sm"
-                      disabled={supabaseSaving}
+                      disabled={isGuest || supabaseSaving}
+                      title={isGuest ? "Sign in to configure cloud database" : undefined}
                     >
                       {supabaseSaving ? (
                         <>
@@ -794,7 +829,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                         "Save & Connect Supabase"
                       )}
                     </button>
-                    {supabaseUrl && (
+                    {supabaseUrl && !isGuest && (
                       <button
                         type="button"
                         className="button button-secondary button-sm"
@@ -840,7 +875,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                   </div>
 
                   <p style={{ fontSize: 12, color: "var(--muted, #8b949e)", marginBottom: 12, lineHeight: 1.5 }}>
-                    <strong>Catalog Scope Architecture:</strong> The application master catalog contains 1,042 verified creators across 2,062 platform accounts. Supabase stores custom-added profiles, live sync overrides, and team campaign shortlists. Stored database records are automatically merged on top of the 1,042 baseline verified catalog.
+                    <strong>Live Federated Architecture:</strong> Searches execute directly against real platform APIs at query time. Supabase stores your workspace prospects, saved creators, campaign shortlists, and outreach notes. No fixed or mock creator catalogs are stored.
                   </p>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
@@ -863,7 +898,8 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                       type="button"
                       className="button button-primary button-sm"
                       onClick={triggerSeedDatabase}
-                      disabled={seedingDb}
+                      disabled={isGuest || seedingDb}
+                      title={isGuest ? "Sign in as workspace owner or admin to trigger live sync" : undefined}
                     >
                       {seedingDb ? (
                         <>
@@ -952,7 +988,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                         Go to <strong>Project Settings → API</strong>, copy your <strong>Project URL</strong> and <strong>anon public API key</strong>, and paste them above.
                       </li>
                       <li>
-                        Click <strong>Save & Connect</strong>, then click <strong>⚡ Sync Live Data to Database</strong>. Mosaic will automatically fetch live channels from YouTube & Kick and populate your database!
+                        Click <strong>Save & Connect</strong>, then click <strong>⚡ Sync Live Data to Database</strong>. GetViral will automatically fetch live channels from YouTube & Kick and populate your database!
                       </li>
                     </ol>
                   </div>
