@@ -8,6 +8,7 @@ import {
   type UserRole,
   type UserSubscriptionState,
   SUBSCRIPTION_TIERS,
+  getDefaultSubscription,
   loadUserSubscription,
   saveUserSubscription,
   loadUserRole,
@@ -121,8 +122,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  // Subscription & Role State
-  const [subscription, setSubscription] = useState<UserSubscriptionState>(() => loadUserSubscription());
+  // Subscription & Role State (deterministic initial state to guarantee zero SSR hydration mismatches)
+  const [subscription, setSubscription] = useState<UserSubscriptionState>(() => getDefaultSubscription("free"));
   const [userRole, setUserRoleState] = useState<UserRole>("viewer");
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);

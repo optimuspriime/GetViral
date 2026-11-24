@@ -234,9 +234,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 : `${subscription.searchesRemaining} of ${subscription.totalQuota}`
             } searches remaining). Click to view plans & upgrade.`}
             aria-label="Subscription and search quota"
+            suppressHydrationWarning
           >
             <Zap size={13} className="text-amber" />
-            <span className="quota-pill-label">
+            <span className="quota-pill-label" suppressHydrationWarning>
               {subscription.totalQuota === -1
                 ? "Unlimited"
                 : `${subscription.searchesRemaining} / ${subscription.totalQuota}`}
@@ -371,7 +372,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="live-status-chip" title="Real-time multi-platform data enabled">
             <span className="status-live-pulse" />
             <Sparkles size={11} className="chip-sparkle" />
-            <span>LIVE CATALOG</span>
+            <span>LIVE PLATFORMS</span>
           </div>
 
           {/* Interactive Account Menu */}

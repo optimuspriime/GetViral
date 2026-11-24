@@ -305,7 +305,7 @@ export default function DashboardPage() {
                 <span>
                   <CheckCircle2 size={12} className="inline-icon text-green" /> Verified live API snapshots
                 </span>
-                <span>Updated {lastCollected ? formatDate(lastCollected) : "Recently"}</span>
+                <span suppressHydrationWarning>Updated {lastCollected ? formatDate(lastCollected) : "Recently"}</span>
               </div>
             </section>
           </div>
@@ -525,10 +525,10 @@ function StatCard({
         <span>{label}</span>
         <span className="stat-icon">{icon}</span>
       </div>
-      <div className="stat-value">
+      <div className="stat-value" suppressHydrationWarning>
         {value >= 999999 ? "Unlimited" : new Intl.NumberFormat("en-US").format(value)}
       </div>
-      <div className="stat-foot">{note}</div>
+      <div className="stat-foot" suppressHydrationWarning>{note}</div>
     </section>
   );
 }

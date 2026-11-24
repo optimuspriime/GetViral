@@ -42,6 +42,14 @@ function usePrefersReducedMotion() {
   return reducedMotion;
 }
 
+function useMounted() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  return mounted;
+}
+
 export function PlatformChart({
   data,
   onSelect,
@@ -49,11 +57,12 @@ export function PlatformChart({
   data: { name: string; value: number }[];
   onSelect: (name: string) => void;
 }) {
+  const mounted = useMounted();
   const reducedMotion = usePrefersReducedMotion();
-  if (!data.length)
+  if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
-        <div className="chart-empty">No platform accounts are available yet.</div>
+        <div className="chart-empty">{!mounted ? "Loading platform metrics..." : "No platform accounts are available yet."}</div>
       </div>
     );
 
@@ -118,6 +127,7 @@ export function TrendChart({
   label: string;
   series?: string[];
 }) {
+  const mounted = useMounted();
   const reducedMotion = usePrefersReducedMotion();
   const [activePlatform, setActivePlatform] = useState<string>("All");
 
@@ -151,10 +161,10 @@ export function TrendChart({
     return [calculatedMin, calculatedMax];
   }, [data, activeSeries]);
 
-  if (!data.length)
+  if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
-        <div className="chart-empty">No dated snapshots in this range.</div>
+        <div className="chart-empty">{!mounted ? "Loading timeline..." : "No dated snapshots in this range."}</div>
       </div>
     );
 
@@ -274,11 +284,12 @@ export function CategoryChart({
   onSelect: (name: string) => void;
   itemLabel?: string;
 }) {
+  const mounted = useMounted();
   const reducedMotion = usePrefersReducedMotion();
-  if (!data.length)
+  if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
-        <div className="chart-empty">No categorized creators available.</div>
+        <div className="chart-empty">{!mounted ? "Loading categories..." : "No categorized creators available."}</div>
       </div>
     );
   return (
@@ -342,11 +353,12 @@ export function HorizontalValueChart({
   suffix: string;
   onSelect: (name: string) => void;
 }) {
+  const mounted = useMounted();
   const reducedMotion = usePrefersReducedMotion();
-  if (!data.length)
+  if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
-        <div className="chart-empty">No sourced audience values are available.</div>
+        <div className="chart-empty">{!mounted ? "Loading audience..." : "No sourced audience values are available."}</div>
       </div>
     );
   return (
@@ -412,11 +424,12 @@ export function ComparisonBarChart({
   valueLabel: string;
   onSelect: (platform: Platform) => void;
 }) {
+  const mounted = useMounted();
   const reducedMotion = usePrefersReducedMotion();
-  if (!data.length)
+  if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
-        <div className="chart-empty">No sourced metric values are available.</div>
+        <div className="chart-empty">{!mounted ? "Loading comparisons..." : "No sourced metric values are available."}</div>
       </div>
     );
   return (
