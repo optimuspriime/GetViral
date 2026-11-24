@@ -1,86 +1,48 @@
 import "server-only";
-import { REAL_CREATORS } from "@/lib/real-creators";
 import type { Provider, ProviderCreator, ProviderPage } from "@/lib/providers/types";
-import { detectCreatorCountry } from "@/lib/country-detector";
-
-const clientId = process.env.TWITCH_CLIENT_ID;
+import { searchTwitch, twitchCapabilities } from "@/lib/connectors/twitch";
 
 export const twitchProvider: Provider = {
   platform: "Twitch",
-  mode: clientId ? "active" : "live",
-  coverageNote: clientId
-    ? "Connected to Twitch Helix API. Streamer discovery and concurrent viewer metrics active."
-    : "Live Twitch provider active with verified partner streaming metrics and community analytics.",
+  mode: process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET ? "active" : "not_configured",
+  coverageNote: twitchCapabilities.discoveryNote,
 
   async searchCreators(query: string): Promise<ProviderPage<ProviderCreator>> {
-    const q = query.trim().toLowerCase();
-
-    const matched = REAL_CREATORS.filter((c) => {
-      const twitch = c.accounts.find((a) => a.platform === "Twitch");
-      if (!twitch) return false;
-      return !q || c.name.toLowerCase().includes(q) || twitch.handle.toLowerCase().includes(q) || c.bio.toLowerCase().includes(q);
-    });
-
-    const items: ProviderCreator[] = matched.map((c) => {
-      const twitch = c.accounts.find((a) => a.platform === "Twitch")!;
-      const followers = twitch.snapshots.find((s) => s.metricName === "followers")?.value ?? null;
-      const reach = twitch.snapshots.find((s) => s.metricName === "avg_live_viewers")?.value ?? null;
-      return {
-        platform: "Twitch",
-        handle: twitch.handle,
-        displayName: c.name,
-        profileUrl: twitch.profileUrl,
-        avatarUrl: c.avatar,
-        bio: c.bio,
-        followers,
-        reach,
-        category: c.category,
-        country: c.creatorCountry,
-        source: "Twitch Helix Directory",
-      };
-    });
-
+    const res = await searchTwitch(query);
+    const items: ProviderCreator[] = res.items.map((c) => ({
+      platform: "Twitch",
+      handle: c.handle,
+      profileUrl: c.profileUrl,
+      displayName: c.name,
+      avatarUrl: c.avatarUrl,
+      bio: c.bio,
+      followers: c.followers,
+      reach: c.reach,
+      category: c.category,
+      country: c.country,
+      source: c.source,
+    }));
     return { items, nextCursor: null, hasMore: false };
   },
 
   async getCreator(handle: string): Promise<ProviderCreator> {
-    const cleanHandle = handle.replace(/^@/, "").toLowerCase();
-    const found = REAL_CREATORS.find((c) => {
-      const twitch = c.accounts.find((a) => a.platform === "Twitch");
-      return twitch && twitch.handle.toLowerCase() === cleanHandle;
-    });
-
-    if (found) {
-      const twitch = found.accounts.find((a) => a.platform === "Twitch")!;
-      const followers = twitch.snapshots.find((s) => s.metricName === "followers")?.value ?? null;
-      const reach = twitch.snapshots.find((s) => s.metricName === "avg_live_viewers")?.value ?? null;
-      return {
-        platform: "Twitch",
-        handle: twitch.handle,
-        displayName: found.name,
-        profileUrl: twitch.profileUrl,
-        avatarUrl: found.avatar,
-        bio: found.bio,
-        followers,
-        reach,
-        category: found.category,
-        country: found.creatorCountry,
-        source: "Twitch Partner Verified Record",
-      };
+    const res = await searchTwitch(handle, { limit: 1 });
+    const c = res.items[0];
+    if (!c) {
+      throw new Error(`Twitch channel "${handle}" was not found or Twitch API credentials not configured.`);
     }
-
     return {
       platform: "Twitch",
-      handle: cleanHandle,
-      displayName: cleanHandle,
-      profileUrl: `https://www.twitch.tv/${cleanHandle}`,
-      avatarUrl: null,
-      bio: "Twitch Creator",
-      followers: null,
-      reach: null,
-      category: "Gaming",
-      country: detectCreatorCountry(cleanHandle),
-      source: "Twitch Platform Lookup",
+      handle: c.handle,
+      profileUrl: c.profileUrl,
+      displayName: c.name,
+      avatarUrl: c.avatarUrl,
+      bio: c.bio,
+      followers: c.followers,
+      reach: c.reach,
+      category: c.category,
+      country: c.country,
+      source: c.source,
     };
   },
 };

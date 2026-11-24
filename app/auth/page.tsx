@@ -20,16 +20,16 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  function handleInstantLogin() {
-    const cleanEmail = email.trim().toLowerCase() || "guest@mosaicscout.com";
-    const userName = fullName.trim() || cleanEmail.split("@")[0];
+  function handleInstantGuestPreview() {
+    const cleanEmail = "demo-guest@mosaicscout.com";
+    const userName = "Guest Explorer (Demo)";
     const next = new URLSearchParams(window.location.search).get("next") ?? "/";
     const targetUrl = next.startsWith("/") && !next.startsWith("//") ? next : "/";
 
-    saveUserRole(role, cleanEmail);
+    saveUserRole("viewer", cleanEmail);
     window.localStorage.setItem(
       "mosaic_user_session",
-      JSON.stringify({ email: cleanEmail, name: userName, role })
+      JSON.stringify({ email: cleanEmail, name: userName, role: "viewer", isGuest: true, isDemoSandbox: true })
     );
     document.cookie = `mosaic_user_session=${encodeURIComponent(cleanEmail)}; path=/; max-age=2592000; SameSite=Lax`;
     window.location.assign(targetUrl);
@@ -323,11 +323,14 @@ export default function AuthPage() {
               height: 42,
               fontWeight: 500,
             }}
-            onClick={handleInstantLogin}
+            onClick={handleInstantGuestPreview}
           >
             <Zap size={15} className="text-amber" />
-            <span>⚡ Instant One-Click Workspace Login</span>
+            <span>⚡ Explore Sandbox as Guest (Isolated Read-Only)</span>
           </button>
+          <p style={{ fontSize: "11px", color: "var(--muted, #8b949e)", textAlign: "center", margin: "6px 0 0" }}>
+            Opens an isolated demo guest session with read-only sandbox permissions. Cloud database writes are disabled.
+          </p>
 
           <p className="form-help">
             {mode === "sign-up"

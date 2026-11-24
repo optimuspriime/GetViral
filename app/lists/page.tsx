@@ -20,6 +20,7 @@ export default function ListsPage() {
     lists,
     hydrated,
     storageError,
+    isGuest,
     createList,
     deleteList,
     renameList,
@@ -48,6 +49,10 @@ export default function ListsPage() {
 
   function submitList(event: React.FormEvent) {
     event.preventDefault();
+    if (isGuest) {
+      showToast("Sign in required to create private workspace lists.", "error");
+      return;
+    }
     const name = newName.trim();
     if (!name) return;
     const id = createList(name);
@@ -58,12 +63,20 @@ export default function ListsPage() {
 
   function handleRename(event: React.FormEvent) {
     event.preventDefault();
+    if (isGuest) {
+      showToast("Sign in required to rename workspace lists.", "error");
+      return;
+    }
     if (!selected || !renameDraft.trim()) return;
     renameList(selected.id, renameDraft.trim());
     setIsRenaming(false);
   }
 
   function handleDeleteCurrentList() {
+    if (isGuest) {
+      showToast("Sign in required to delete workspace lists.", "error");
+      return;
+    }
     if (!selected) return;
     if (confirm(`Are you sure you want to delete the list "${selected.name}"?`)) {
       deleteList(selected.id);
@@ -157,38 +170,39 @@ export default function ListsPage() {
       </div>
 
       {/* Demo Fixtures Notice for Visitors / Unauthenticated Users */}
-      <div
-        className="demo-fixtures-banner"
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 12,
-          padding: "13px 16px",
-          background: "#fffbeb",
-          border: "1px solid #fef3c7",
-          borderRadius: 10,
-          marginBottom: 16,
-          color: "#92400e",
-          fontSize: "12px",
-          lineHeight: 1.5,
-        }}
-        role="status"
-      >
-        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>ℹ️</span>
-        <div>
-          <strong style={{ display: "block", color: "#78350f", marginBottom: 2 }}>
-            Demo Campaign Shortlist (Sample Fixtures Preview)
-          </strong>
-          <span>
-            You are viewing sample CRM shortlist fixtures with demonstration notes, tags, and outreach statuses.
-            These sample records illustrate shortlist workflow and CRM staging. To create, save, and manage your private,
-            secure workspace shortlists across devices, please{" "}
-            <Link href="/auth" style={{ color: "#b45309", fontWeight: 700, textDecoration: "underline" }}>
-              Sign In
-            </Link>.
-          </span>
+      {isGuest && (
+        <div
+          className="demo-fixtures-banner"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            padding: "13px 16px",
+            background: "#fffbeb",
+            border: "1px solid #fef3c7",
+            borderRadius: 10,
+            marginBottom: 16,
+            color: "#92400e",
+            fontSize: "12px",
+            lineHeight: 1.5,
+          }}
+          role="status"
+        >
+          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔒</span>
+          <div>
+            <strong style={{ display: "block", color: "#78350f", marginBottom: 2 }}>
+              Guest Sandbox Preview (Read-Only)
+            </strong>
+            <span>
+              You are exploring in guest sandbox mode. Creating, renaming, deleting, and modifying shortlist CRM records requires signing in with a workspace account. Please{" "}
+              <Link href="/auth" style={{ color: "#b45309", fontWeight: 700, textDecoration: "underline" }}>
+                Sign In
+              </Link>{" "}
+              to unlock full CRM shortlists.
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {storageError && (
         <div className="storage-error" role="alert">
@@ -206,9 +220,16 @@ export default function ListsPage() {
               <strong>Your Lists ({lists.length})</strong>
               <button
                 className="icon-button"
-                onClick={() => setIsCreating(!isCreating)}
+                onClick={() => {
+                  if (isGuest) {
+                    showToast("Sign in required to create private workspace lists.", "error");
+                    return;
+                  }
+                  setIsCreating(!isCreating);
+                }}
+                disabled={isGuest}
                 aria-label="Create list"
-                title="Create new list"
+                title={isGuest ? "Sign in to create lists" : "Create new list"}
                 type="button"
               >
                 <Plus size={16} />
@@ -317,10 +338,15 @@ export default function ListsPage() {
                         <button
                           className="icon-button"
                           onClick={() => {
+                            if (isGuest) {
+                              showToast("Sign in required to rename workspace lists.", "error");
+                              return;
+                            }
                             setRenameDraft(selected.name);
                             setIsRenaming(true);
                           }}
-                          title="Rename this list"
+                          disabled={isGuest}
+                          title={isGuest ? "Sign in to rename lists" : "Rename this list"}
                           type="button"
                         >
                           <Pencil size={13} />
@@ -328,7 +354,8 @@ export default function ListsPage() {
                         <button
                           className="icon-button delete-list-btn"
                           onClick={handleDeleteCurrentList}
-                          title="Delete this list"
+                          disabled={isGuest}
+                          title={isGuest ? "Sign in to delete lists" : "Delete this list"}
                           type="button"
                         >
                           <Trash2 size={13} />
@@ -444,8 +471,9 @@ export default function ListsPage() {
                               <textarea
                                 className="note-input"
                                 aria-label={`Notes for ${creator.name}`}
-                                placeholder="Add campaign notes, angle, or deliverables…"
+                                placeholder={isGuest ? "Sign in to add private notes and outreach records…" : "Add campaign notes, angle, or deliverables…"}
                                 value={selected.notes[creator.id] ?? ""}
+                                readOnly={isGuest}
                                 onChange={(event) =>
                                   updateNote(selected.id, creator.id, event.target.value)
                                 }
@@ -454,11 +482,13 @@ export default function ListsPage() {
                               <input
                                 className="tag-input"
                                 aria-label={`Tags for ${creator.name}`}
-                                placeholder="Tags, comma separated (e.g. Q4 Sponsor, Tech)"
+                                placeholder={isGuest ? "Sign in to manage tags" : "Tags, comma separated (e.g. Q4 Sponsor, Tech)"}
                                 value={
                                   tagDrafts[tagKey] ??
                                   (selected.tags?.[creator.id] ?? []).join(", ")
                                 }
+                                readOnly={isGuest}
+                                disabled={isGuest}
                                 onChange={(event) =>
                                   setTagDrafts((current) => ({
                                     ...current,
@@ -494,6 +524,7 @@ export default function ListsPage() {
                                   .toLowerCase()
                                   .replace(/\s+/g, "-")}`}
                                 value={selected.statuses[creator.id] ?? "To review"}
+                                disabled={isGuest}
                                 onChange={(event) =>
                                   updateStatus(
                                     selected.id,
@@ -510,9 +541,16 @@ export default function ListsPage() {
 
                             <button
                               className="icon-button list-remove"
-                              onClick={() => removeCreator(selected.id, creator.id)}
+                              onClick={() => {
+                                if (isGuest) {
+                                  showToast("Sign in required to modify workspace lists.", "error");
+                                  return;
+                                }
+                                removeCreator(selected.id, creator.id);
+                              }}
+                              disabled={isGuest}
                               aria-label={`Remove ${creator.name} from list`}
-                              title="Remove from shortlist"
+                              title={isGuest ? "Sign in to manage creators" : "Remove from shortlist"}
                               type="button"
                             >
                               <Trash2 size={15} />

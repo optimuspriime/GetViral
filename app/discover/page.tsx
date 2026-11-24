@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   Bookmark, Download, Search, SlidersHorizontal, UserPlus, UserRoundSearch, X,
-  Check, Sparkles, RefreshCw, Globe, Zap
+  Check, Sparkles, RefreshCw, Zap, Info, AlertCircle
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useProspects } from "@/components/data-provider";
@@ -74,9 +74,6 @@ function getEmptyFilterGuidance(filters: Filters): string {
   if (filters.language && filters.language !== "All languages") {
     suggestions.push(`clearing the language filter (${filters.language})`);
   }
-  if (filters.audienceCountry) {
-    suggestions.push(`clearing the audience geography filter (${filters.audienceCountry})`);
-  }
   if (filters.hasContact) {
     suggestions.push("unchecking 'Direct email available'");
   }
@@ -85,7 +82,7 @@ function getEmptyFilterGuidance(filters: Filters): string {
   }
 
   if (suggestions.length === 0) {
-    return "Try adjusting your search query or resetting filters.";
+    return "Try adjusting your search query or exploring popular searches below.";
   }
 
   if (suggestions.length === 1) {
@@ -100,8 +97,17 @@ export default function DiscoverPage() {
   const [filters, setFilters] = useState(initialFilters);
   const [sort, setSort] = useState("followers");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const pageSize = 50;
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [refreshingCreatorId, setRefreshingCreatorId] = useState<string | null>(null);
+
+  // Live federated search state
+  const [isSearching, setIsSearching] = useState(false);
+  const [liveSearchResults, setLiveSearchResults] = useState<Creator[] | null>(null);
+  const [connectorStatuses, setConnectorStatuses] = useState<Record<string, { status: string; count: number; message?: string }>>({});
+  const [searchProvenance, setSearchProvenance] = useState<{ source: string; isLive: boolean } | null>(null);
+
+  // Direct handle lookup modal state
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importPlatform, setImportPlatform] = useState<Platform>("YouTube");
   const [importHandle, setImportHandle] = useState("");
@@ -110,7 +116,7 @@ export default function DiscoverPage() {
   const [importResult, setImportResult] = useState<Partial<Creator> | null>(null);
 
   const {
-    creators,
+    creators: savedCreators,
     lists,
     hydrated,
     storageError,
@@ -132,26 +138,63 @@ export default function DiscoverPage() {
     setFilters((current) => ({ ...current, [key]: value }));
   }, []);
 
-  const executeSearch = useCallback((queryToSearch?: string) => {
-    const val = (queryToSearch !== undefined ? queryToSearch : searchInput).trim();
-    if (!val) {
-      update("query", "");
-      return;
-    }
-    const allowed = deductSearch();
-    if (!allowed) return;
-    update("query", val);
-    const leftText = subscription.totalQuota === -1
-      ? "Unlimited"
-      : `${Math.max(0, subscription.searchesRemaining - 1)} searches left`;
-    showToast(`Search performed! (${leftText})`, "info");
-  }, [searchInput, deductSearch, update, subscription.totalQuota, subscription.searchesRemaining, showToast]);
+  // Execute real federated search
+  const executeSearch = useCallback(
+    async (queryToSearch?: string) => {
+      const val = (queryToSearch !== undefined ? queryToSearch : searchInput).trim();
+      if (!val) {
+        update("query", "");
+        setLiveSearchResults(null);
+        setSearchProvenance(null);
+        return;
+      }
 
+      const allowed = deductSearch();
+      if (!allowed) return;
+
+      setIsSearching(true);
+      update("query", val);
+
+      try {
+        const platformParam = filters.platform !== "All platforms" ? `&platform=${encodeURIComponent(filters.platform)}` : "";
+        const res = await fetch(`/api/creators?q=${encodeURIComponent(val)}${platformParam}`);
+        const data = await res.json();
+
+        if (Array.isArray(data.creators)) {
+          setLiveSearchResults(data.creators);
+          if (data.connectorStatuses) {
+            setConnectorStatuses(data.connectorStatuses);
+          }
+          setSearchProvenance({
+            source: data.source || "Live Federated Platform Connectors",
+            isLive: Boolean(data.isLive),
+          });
+
+          const leftText =
+            subscription.totalQuota === -1
+              ? "Unlimited"
+              : `${Math.max(0, subscription.searchesRemaining - 1)} searches left`;
+          showToast(`Found ${data.creators.length} creators across platform APIs (${leftText})`, "info");
+        } else {
+          setLiveSearchResults([]);
+        }
+      } catch {
+        showToast("Live federated search request failed", "error");
+        setLiveSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [searchInput, deductSearch, update, filters.platform, subscription.totalQuota, subscription.searchesRemaining, showToast],
+  );
+
+  // Parse initial query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const qParam = params.get("q");
     if (qParam) {
       setSearchInput(qParam);
+      void executeSearch(qParam);
     }
     setFilters((current) => ({
       ...current,
@@ -166,10 +209,90 @@ export default function DiscoverPage() {
       maxFollowers: params.get("maxFollowers") ?? current.maxFollowers,
       hasContact: params.get("hasContact") === "true" ? true : current.hasContact,
     }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Determine active creators dataset: live search results take precedence; otherwise saved prospects
+  const activeDataset: Creator[] = useMemo(() => {
+    if (liveSearchResults !== null) {
+      return liveSearchResults;
+    }
+    return savedCreators;
+  }, [liveSearchResults, savedCreators]);
+
+  // Refresh single creator from live platform API
+  async function refreshCreatorLive(platform: Platform, handle: string, creatorId: string) {
+    setRefreshingCreatorId(creatorId);
+    try {
+      const res = await fetch(`/api/lookup?platform=${encodeURIComponent(platform)}&handle=${encodeURIComponent(handle)}`);
+      const data = await res.json();
+      if (res.ok && data.success && data.creator) {
+        const fresh = data.creator;
+        setLiveSearchResults((prev) => {
+          if (!prev) return prev;
+          return prev.map((c) => {
+            if (c.id !== creatorId) return c;
+            return {
+              ...c,
+              accounts: c.accounts.map((a) => {
+                if (a.platform !== platform) return a;
+                return {
+                  ...a,
+                  snapshots: [
+                    ...(fresh.followers !== null
+                      ? [
+                          {
+                            id: `snap-${creatorId}-fresh-f`,
+                            metricName: "followers" as const,
+                            value: fresh.followers,
+                            unit: "count" as const,
+                            collectedAt: data.fetchedAt || new Date().toISOString(),
+                            windowStart: null,
+                            windowEnd: null,
+                            periodLabel: null,
+                            sampleSize: null,
+                            source: data.source || `${platform} Platform API`,
+                            status: "public" as const,
+                          },
+                        ]
+                      : []),
+                    ...(fresh.reach !== null
+                      ? [
+                          {
+                            id: `snap-${creatorId}-fresh-r`,
+                            metricName: (fresh.reachMetric || "avg_views") as "avg_views" | "avg_live_viewers",
+                            value: fresh.reach,
+                            unit: fresh.reachMetric === "avg_live_viewers" ? ("count" as const) : ("views" as const),
+                            collectedAt: data.fetchedAt || new Date().toISOString(),
+                            windowStart: null,
+                            windowEnd: null,
+                            periodLabel: fresh.isLiveStream ? "Live broadcast" : "Recent content",
+                            sampleSize: 10,
+                            source: data.source || `${platform} Platform API`,
+                            status: "public" as const,
+                          },
+                        ]
+                      : []),
+                  ],
+                };
+              }),
+            };
+          });
+        });
+        showToast(`Refreshed metrics for @${handle} directly from ${platform} API!`, "success");
+      } else {
+        showToast(data.error || `Could not refresh @${handle}`, "error");
+      }
+    } catch {
+      showToast(`Network error refreshing @${handle}`, "error");
+    } finally {
+      setRefreshingCreatorId(null);
+    }
+  }
+
+  // Filter and sort active results
   const results = useMemo(() => {
-    const all: Result[] = creators.flatMap((creator) =>
+    const all: Result[] = activeDataset.flatMap((creator) =>
       creator.accounts.map((account) => ({ creator, account })),
     );
 
@@ -189,8 +312,6 @@ export default function DiscoverPage() {
         (!min && !max) ||
         (value !== null && (!min || value >= Number(min)) && (!max || value <= Number(max)));
 
-      const profileActivity = (account.activity ?? "").toLowerCase();
-
       return (
         matchesText &&
         (filters.platform === "All platforms" || account.platform === filters.platform) &&
@@ -198,22 +319,10 @@ export default function DiscoverPage() {
         (filters.language === "All languages" || creator.language === filters.language) &&
         (!filters.country ||
           creator.creatorCountry?.toLowerCase().includes(filters.country.toLowerCase())) &&
-        (!filters.audienceCountry ||
-          creator.audienceInsights.some(
-            (insight) =>
-              ["country", "audience_country"].includes(insight.dimension.toLowerCase()) &&
-              insight.amount !== null &&
-              insight.value.toLowerCase() === filters.audienceCountry.toLowerCase(),
-          )) &&
         rangeMatches(followers, filters.minFollowers, filters.maxFollowers) &&
         rangeMatches(live, filters.minLive, filters.maxLive) &&
         rangeMatches(views, filters.minViews, filters.maxViews) &&
-        (filters.activity === "Any activity" ||
-          (filters.activity === "Active this week" && profileActivity.includes("week")) ||
-          (filters.activity === "Active this month" &&
-            !!account.activity &&
-            !profileActivity.includes("no recent"))) &&
-        (!filters.hasContact || creator.businessContact !== null)
+        (!filters.hasContact || Boolean(creator.businessContact?.email))
       );
     });
 
@@ -229,7 +338,7 @@ export default function DiscoverPage() {
       if (sort === "name") return a.creator.name.localeCompare(b.creator.name);
       return 0;
     });
-  }, [creators, filters, sort]);
+  }, [activeDataset, filters, sort]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -248,6 +357,7 @@ export default function DiscoverPage() {
       clear: () => {
         setSearchInput("");
         update("query", "");
+        setLiveSearchResults(null);
       },
     });
   if (filters.platform !== initialFilters.platform)
@@ -262,11 +372,6 @@ export default function DiscoverPage() {
     });
   if (filters.country)
     appliedFilters.push({ label: `Country: ${filters.country}`, clear: () => update("country", "") });
-  if (filters.audienceCountry)
-    appliedFilters.push({
-      label: `Audience: ${filters.audienceCountry}`,
-      clear: () => update("audienceCountry", ""),
-    });
   if (filters.minFollowers)
     appliedFilters.push({
       label: `Followers ≥ ${formatNumber(Number(filters.minFollowers))}`,
@@ -300,6 +405,11 @@ export default function DiscoverPage() {
       removeCreator(targetList.id, creatorId);
     } else {
       addCreator(targetList.id, creatorId);
+      // Also ensure creator is saved in workspace state if it came from live search
+      const searched = liveSearchResults?.find((c) => c.id === creatorId);
+      if (searched) {
+        addCustomCreator(searched);
+      }
     }
   }
 
@@ -320,6 +430,7 @@ export default function DiscoverPage() {
       "Public Business Email",
       "Contact Source URL",
       "Data Verification Source",
+      "Fetched Timestamp",
     ];
 
     const lines = results.map(({ creator, account }) => [
@@ -337,7 +448,8 @@ export default function DiscoverPage() {
       account.activity ?? "Active",
       creator.businessContact?.email ?? "",
       creator.businessContact?.sourceUrl ?? "",
-      "Mosaic Verified Platform API",
+      account.snapshots[0]?.source || "Live Platform API",
+      account.snapshots[0]?.collectedAt || new Date().toISOString(),
     ]);
 
     const csv = [headers, ...lines].map((row) => row.map(csvCell).join(",")).join("\r\n");
@@ -350,6 +462,7 @@ export default function DiscoverPage() {
     showToast("Exported creators CSV successfully!", "success");
   }
 
+  // Exact Handle Lookup Modal handler
   async function handleLiveLookup(e: React.FormEvent) {
     e.preventDefault();
     if (!importHandle.trim()) return;
@@ -365,27 +478,20 @@ export default function DiscoverPage() {
       );
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to lookup creator on platform.");
+        throw new Error(data.error || `Failed to lookup channel on ${importPlatform}.`);
       }
 
       const pCreator = data.creator;
       const detectedCountry =
         pCreator.country ||
-        detectCreatorCountry(pCreator.handle, pCreator.displayName, pCreator.bio);
+        detectCreatorCountry(pCreator.handle, pCreator.displayName, pCreator.bio) ||
+        "United States";
 
-      let detectedLanguage = pCreator.language || "English";
-      if (detectedCountry === "India") {
-        detectedLanguage = "Hindi";
-        if (/tamil/i.test(pCreator.bio || "") || /tamil/i.test(pCreator.displayName || "")) detectedLanguage = "Tamil";
-        else if (/telugu/i.test(pCreator.bio || "") || /telugu/i.test(pCreator.displayName || "")) detectedLanguage = "Telugu";
-        else if (/punjabi/i.test(pCreator.bio || "") || /punjabi/i.test(pCreator.displayName || "")) detectedLanguage = "Punjabi";
-        else if (/bengali/i.test(pCreator.bio || "") || /bengali/i.test(pCreator.displayName || "")) detectedLanguage = "Bengali";
-        else if (/marathi/i.test(pCreator.bio || "") || /marathi/i.test(pCreator.displayName || "")) detectedLanguage = "Marathi";
-      }
+      const detectedLanguage = pCreator.language || "English";
 
       setImportResult({
         name: pCreator.displayName || pCreator.handle,
-        category: pCreator.category || "Entertainment",
+        category: pCreator.category || "General",
         language: detectedLanguage,
         creatorCountry: detectedCountry,
         bio: pCreator.bio || `Content creator on ${importPlatform}.`,
@@ -396,22 +502,26 @@ export default function DiscoverPage() {
             platform: importPlatform,
             handle: pCreator.handle,
             profileUrl: pCreator.profileUrl,
-            activity: "Active",
+            activity: pCreator.isLiveStream ? "Live Now" : "Active",
             snapshots: [
-              {
-                id: `snap-${Date.now()}-1`,
-                metricName: "followers",
-                value: pCreator.followers || 50000,
-                unit: "count",
-                collectedAt: new Date().toISOString(),
-                windowStart: null,
-                windowEnd: null,
-                periodLabel: "Point-in-time",
-                sampleSize: null,
-                source: "Live Platform API Lookup",
-                status: "public",
-              },
-              ...(pCreator.reach
+              ...(pCreator.followers !== null
+                ? [
+                    {
+                      id: `snap-${Date.now()}-1`,
+                      metricName: "followers",
+                      value: pCreator.followers,
+                      unit: "count" as const,
+                      collectedAt: data.fetchedAt || new Date().toISOString(),
+                      windowStart: null,
+                      windowEnd: null,
+                      periodLabel: "Point-in-time",
+                      sampleSize: null,
+                      source: data.source || `${importPlatform} Platform API`,
+                      status: "public" as const,
+                    },
+                  ]
+                : []),
+              ...(pCreator.reach !== null
                 ? [
                     {
                       id: `snap-${Date.now()}-2`,
@@ -423,12 +533,12 @@ export default function DiscoverPage() {
                       unit: (importPlatform === "Twitch" || importPlatform === "Kick"
                         ? "count"
                         : "views") as "count" | "views",
-                      collectedAt: new Date().toISOString(),
+                      collectedAt: data.fetchedAt || new Date().toISOString(),
                       windowStart: null,
                       windowEnd: null,
-                      periodLabel: "Recent window",
+                      periodLabel: pCreator.isLiveStream ? "Current live broadcast" : "Recent content",
                       sampleSize: 10,
-                      source: "Live Platform API Lookup",
+                      source: data.source || `${importPlatform} Platform API`,
                       status: "public" as const,
                     },
                   ]
@@ -436,64 +546,8 @@ export default function DiscoverPage() {
             ],
           },
         ],
-        audienceInsights: [
-          {
-            dimension: "audience_country",
-            value: detectedCountry,
-            amount: 72,
-            unit: "%",
-            collectedAt: new Date().toISOString(),
-            source: "Platform Regional Analytics",
-            status: "public",
-            confidence: 0.95,
-          },
-          ...(detectedCountry === "India"
-            ? [
-                {
-                  dimension: "audience_country",
-                  value: "United Arab Emirates",
-                  amount: 12,
-                  unit: "%",
-                  collectedAt: new Date().toISOString(),
-                  source: "Platform Regional Analytics",
-                  status: "public" as const,
-                  confidence: 0.92,
-                },
-                {
-                  dimension: "audience_country",
-                  value: "United States",
-                  amount: 6,
-                  unit: "%",
-                  collectedAt: new Date().toISOString(),
-                  source: "Platform Regional Analytics",
-                  status: "public" as const,
-                  confidence: 0.9,
-                },
-              ]
-            : [
-                {
-                  dimension: "audience_country",
-                  value: "United Kingdom",
-                  amount: 14,
-                  unit: "%",
-                  collectedAt: new Date().toISOString(),
-                  source: "Platform Regional Analytics",
-                  status: "public" as const,
-                  confidence: 0.92,
-                },
-                {
-                  dimension: "audience_country",
-                  value: "Canada",
-                  amount: 8,
-                  unit: "%",
-                  collectedAt: new Date().toISOString(),
-                  source: "Platform Regional Analytics",
-                  status: "public" as const,
-                  confidence: 0.9,
-                },
-              ]),
-        ],
-        businessContact: null,
+        audienceInsights: [],
+        businessContact: pCreator.businessContact || null,
       });
     } catch (err) {
       setImportError(err instanceof Error ? err.message : "Failed to lookup channel.");
@@ -504,32 +558,19 @@ export default function DiscoverPage() {
 
   function handleConfirmImport() {
     if (!importResult) return;
-    const finalCountry = importResult.creatorCountry || "India";
+    const finalCountry = importResult.creatorCountry || "Global";
     const newCreator: Creator = {
       id: `creator-${Date.now()}`,
       name: importResult.name || "New Creator",
-      category: importResult.category || "Entertainment",
+      category: importResult.category || "General",
       language: importResult.language || "English",
       creatorCountry: finalCountry,
-      creatorCountrySource: "Platform API / Verified Regional Data",
+      creatorCountrySource: "Platform API / Verified Channel Data",
       bio: importResult.bio || "",
       avatar: importResult.avatar || "",
       accounts: importResult.accounts || [],
-      audienceInsights: importResult.audienceInsights?.length
-        ? importResult.audienceInsights
-        : [
-            {
-              dimension: "audience_country",
-              value: finalCountry,
-              amount: 72,
-              unit: "%",
-              collectedAt: new Date().toISOString(),
-              source: "Platform Regional Analytics",
-              status: "public",
-              confidence: 0.95,
-            },
-          ],
-      businessContact: null,
+      audienceInsights: [],
+      businessContact: importResult.businessContact || null,
     };
     addCustomCreator(newCreator);
     setImportModalOpen(false);
@@ -539,25 +580,12 @@ export default function DiscoverPage() {
 
   const categories = [
     ...new Set(
-      creators.map((creator) => creator.category).filter((value): value is string => !!value),
+      activeDataset.map((creator) => creator.category).filter((value): value is string => !!value),
     ),
   ].sort();
   const languages = [
     ...new Set(
-      creators.map((creator) => creator.language).filter((value): value is string => !!value),
-    ),
-  ].sort();
-  const audienceCountries = [
-    ...new Set(
-      creators.flatMap((creator) =>
-        creator.audienceInsights
-          .filter(
-            (insight) =>
-              ["country", "audience_country"].includes(insight.dimension.toLowerCase()) &&
-              insight.amount !== null,
-          )
-          .map((insight) => insight.value),
-      ),
+      activeDataset.map((creator) => creator.language).filter((value): value is string => !!value),
     ),
   ].sort();
   const savedAccountIds = new Set(lists.flatMap((list) => list.creatorIds));
@@ -568,11 +596,11 @@ export default function DiscoverPage() {
       <div className="page-heading">
         <div>
           <div className="eyebrow">
-            <Sparkles size={12} className="inline-icon" /> DISCOVERY WORKSPACE
+            <Sparkles size={12} className="inline-icon" /> FEDERATED DISCOVERY WORKSPACE
           </div>
-          <h1>Find your next creator partnership.</h1>
+          <h1>Find creator partners across live platform APIs.</h1>
           <p className="page-subtitle">
-            Search across platforms with verified subscriber numbers, view averages, and direct business contacts.
+            Query live APIs on demand across YouTube, Twitch, Kick, TikTok, and Instagram with verified origin timestamps and reach metrics.
           </p>
         </div>
         <div className="page-heading-actions">
@@ -580,7 +608,7 @@ export default function DiscoverPage() {
             className="button button-secondary sync-live-button"
             onClick={syncAllPlatforms}
             disabled={isSyncing}
-            title="Sync all platforms and refresh live metrics across YouTube, Kick, Twitch, TikTok & Instagram"
+            title="Sync all platforms and refresh live metrics across connected APIs"
             type="button"
           >
             <RefreshCw size={14} className={isSyncing ? "spin-icon" : ""} />
@@ -591,7 +619,7 @@ export default function DiscoverPage() {
             onClick={() => setImportModalOpen(true)}
             type="button"
           >
-            <UserPlus size={14} /> Import Creator via API
+            <UserPlus size={14} /> Direct Handle Lookup
           </button>
           <button
             className="button button-secondary"
@@ -616,22 +644,16 @@ export default function DiscoverPage() {
           className="search-field discovery-search"
           onSubmit={(e) => {
             e.preventDefault();
-            executeSearch();
+            void executeSearch();
           }}
         >
           <Search size={16} />
           <input
             type="search"
             aria-label="Search creators"
-            placeholder="Search creator name, channel handle, niche, or bio..."
+            placeholder="Search live creators by name, topic, channel handle, or niche..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                executeSearch();
-              }
-            }}
           />
           {searchInput && (
             <button
@@ -639,6 +661,7 @@ export default function DiscoverPage() {
               onClick={() => {
                 setSearchInput("");
                 update("query", "");
+                setLiveSearchResults(null);
               }}
               aria-label="Clear search"
               type="button"
@@ -650,10 +673,11 @@ export default function DiscoverPage() {
           <button
             type="submit"
             className="search-submit-btn"
-            title="Execute search and deduct 1 from remaining search quota"
+            disabled={isSearching}
+            title="Execute federated search across connected platform APIs"
           >
-            <Search size={13} />
-            <span>Search</span>
+            {isSearching ? <RefreshCw size={13} className="spin-icon" /> : <Search size={13} />}
+            <span>{isSearching ? "Searching…" : "Search"}</span>
           </button>
 
           {/* Search Quota Pill */}
@@ -699,110 +723,45 @@ export default function DiscoverPage() {
         </button>
       </div>
 
-      {/* Quick Country Navigation Bar */}
-      <div className="country-quick-bar" role="region" aria-label="Country Navigation">
-        <span className="country-bar-label">
-          <Globe size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
-          Country:
-        </span>
-        <button
-          type="button"
-          className={`country-quick-tab ${!filters.country ? "active" : ""}`}
-          onClick={() => update("country", "")}
+      {/* Federated Search Provenance Bar */}
+      {searchProvenance && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: "rgba(34, 197, 94, 0.08)",
+            border: "1px solid rgba(34, 197, 94, 0.22)",
+            borderRadius: 10,
+            padding: "8px 14px",
+            fontSize: 12,
+            marginBottom: 14,
+            color: "#166534",
+          }}
         >
-          All Creators ({creators.length})
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "india" ? "active" : ""}`}
-          onClick={() => update("country", "India")}
-        >
-          <span className="country-flag">🇮🇳</span>
-          <span>India</span>
-          <span className="country-pill-count">
-            {creators.filter((c) => c.creatorCountry?.toLowerCase() === "india").length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "united states" ? "active" : ""}`}
-          onClick={() => update("country", "United States")}
-        >
-          <span className="country-flag">🇺🇸</span>
-          <span>United States</span>
-          <span className="country-pill-count">
-            {creators.filter((c) => c.creatorCountry?.toLowerCase().includes("united states")).length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "united kingdom" ? "active" : ""}`}
-          onClick={() => update("country", "United Kingdom")}
-        >
-          <span className="country-flag">🇬🇧</span>
-          <span>United Kingdom</span>
-          <span className="country-pill-count">
-            {creators.filter((c) => c.creatorCountry?.toLowerCase().includes("united kingdom")).length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "canada" ? "active" : ""}`}
-          onClick={() => update("country", "Canada")}
-        >
-          <span className="country-flag">🇨🇦</span>
-          <span>Canada</span>
-          <span className="country-pill-count">
-            {creators.filter((c) => c.creatorCountry?.toLowerCase().includes("canada")).length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "spain" ? "active" : ""}`}
-          onClick={() => update("country", "Spain")}
-        >
-          <span className="country-flag">🇪🇸</span>
-          <span>Spain</span>
-          <span className="country-pill-count">
-            {creators.filter((c) => c.creatorCountry?.toLowerCase().includes("spain")).length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "brazil" ? "active" : ""}`}
-          onClick={() => update("country", "Brazil")}
-        >
-          <span className="country-flag">🇧🇷</span>
-          <span>Brazil</span>
-          <span className="country-pill-count">
-            {creators.filter((c) => c.creatorCountry?.toLowerCase().includes("brazil")).length}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "germany" ? "active" : ""}`}
-          onClick={() => update("country", "Germany")}
-        >
-          <span className="country-flag">🇩🇪</span>
-          <span>Germany</span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "japan" ? "active" : ""}`}
-          onClick={() => update("country", "Japan")}
-        >
-          <span className="country-flag">🇯🇵</span>
-          <span>Japan</span>
-        </button>
-        <button
-          type="button"
-          className={`country-quick-tab ${filters.country.toLowerCase() === "australia" ? "active" : ""}`}
-          onClick={() => update("country", "Australia")}
-        >
-          <span className="country-flag">🇦🇺</span>
-          <span>Australia</span>
-        </button>
-      </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
+            <strong>Source: {searchProvenance.source}</strong>
+            <span style={{ color: "#4b6c51" }}>· Real-time platform API query</span>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {Object.entries(connectorStatuses).map(([plat, stat]) => (
+              <span
+                key={plat}
+                style={{
+                  fontSize: 11,
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  background: stat.status === "ok" ? "rgba(34, 197, 94, 0.15)" : "rgba(234, 179, 8, 0.15)",
+                  color: stat.status === "ok" ? "#15803d" : "#854d0e",
+                }}
+              >
+                {plat}: {stat.status === "ok" ? `${stat.count} results` : stat.status}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Applied Filters Chips */}
       {appliedFilters.length > 0 && (
@@ -821,7 +780,11 @@ export default function DiscoverPage() {
           ))}
           <button
             className="clear-all-filters"
-            onClick={() => setFilters(initialFilters)}
+            onClick={() => {
+              setFilters(initialFilters);
+              setLiveSearchResults(null);
+              setSearchProvenance(null);
+            }}
             type="button"
           >
             Reset all
@@ -865,18 +828,11 @@ export default function DiscoverPage() {
                 onChange={(e) => update("country", e.target.value)}
               >
                 <option value="">All countries</option>
-                <option value="India">🇮🇳 India</option>
-                <option value="United States">🇺🇸 United States</option>
-                <option value="United Kingdom">🇬🇧 United Kingdom</option>
-                <option value="Canada">🇨🇦 Canada</option>
-                <option value="Australia">🇦🇺 Australia</option>
-                <option value="Germany">🇩🇪 Germany</option>
-                <option value="Spain">🇪🇸 Spain</option>
-                <option value="Italy">🇮🇹 Italy</option>
-                <option value="Brazil">🇧🇷 Brazil</option>
-                <option value="Portugal">🇵🇹 Portugal</option>
-                <option value="Argentina">🇦🇷 Argentina</option>
-                <option value="United Arab Emirates">🇦🇪 United Arab Emirates</option>
+                {COMMON_COUNTRIES.map((c) => (
+                  <option key={c} value={c}>
+                    {getCountryFlag(c)} {c}
+                  </option>
+                ))}
               </select>
             </FilterGroup>
 
@@ -955,7 +911,7 @@ export default function DiscoverPage() {
 
             <FilterGroup label="Average Video Views">
               <div className="slider-filter-head">
-                <span className="filter-hint">YouTube & TikTok views per post</span>
+                <span className="filter-hint">YouTube views per post</span>
                 <span className={`slider-count-badge ${filters.minViews ? "active" : ""}`}>
                   {filters.minViews ? `≥ ${formatNumber(Number(filters.minViews))}` : "Any"}
                 </span>
@@ -1016,21 +972,15 @@ export default function DiscoverPage() {
               </select>
             </FilterGroup>
 
-            {audienceCountries.length > 0 && (
-              <FilterGroup label="Audience Geography">
-                <select
-                  className="filter-select"
-                  aria-label="Filter by audience geography"
-                  value={filters.audienceCountry}
-                  onChange={(e) => update("audienceCountry", e.target.value)}
-                >
-                  <option value="">All verified countries</option>
-                  {audienceCountries.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </FilterGroup>
-            )}
+            {/* Audience Geography Info Box */}
+            <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.4)", borderRadius: 8, border: "1px solid rgba(80,140,80,0.12)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "#285d38", marginBottom: 4 }}>
+                <Info size={12} /> Audience Demographics
+              </div>
+              <p style={{ fontSize: 10, color: "#68836c", margin: 0, lineHeight: 1.4 }}>
+                Audience geography requires creator-authorized OAuth tokens; public discovery APIs do not return private audience country metrics.
+              </p>
+            </div>
 
             <FilterGroup label="Public Business Email">
               <label className="check-row">
@@ -1039,7 +989,7 @@ export default function DiscoverPage() {
                   checked={filters.hasContact}
                   onChange={(e) => update("hasContact", e.target.checked)}
                 />
-                Direct email available
+                Direct verified email only
               </label>
             </FilterGroup>
           </div>
@@ -1049,12 +999,20 @@ export default function DiscoverPage() {
         <section>
           <div className="results-toolbar">
             <span className="results-count">
-              <strong>{results.length}</strong> {results.length === 1 ? "account" : "accounts"} match
-              your filters
+              <strong>{results.length}</strong> {results.length === 1 ? "creator" : "creators"} found
+              {liveSearchResults !== null && (
+                <span style={{ marginLeft: 6, color: "#166534", fontWeight: 600 }}>
+                  (Live Federated Results)
+                </span>
+              )}
+              {liveSearchResults === null && savedCreators.length > 0 && (
+                <span style={{ marginLeft: 6, color: "#547359" }}>
+                  (Saved Workspace Prospects)
+                </span>
+              )}
               {totalPages > 1 && (
                 <span style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: "12px", fontWeight: 500 }}>
-                  · Page {currentPage} of {totalPages} (Showing {(currentPage - 1) * pageSize + 1}–
-                  {Math.min(currentPage * pageSize, results.length)})
+                  · Page {currentPage} of {totalPages}
                 </span>
               )}
             </span>
@@ -1085,7 +1043,17 @@ export default function DiscoverPage() {
           </div>
 
           <div className="card results-card">
-            {results.length ? (
+            {isSearching ? (
+              <div style={{ textAlign: "center", padding: "64px 20px" }}>
+                <RefreshCw size={28} className="spin-icon" style={{ color: "#22c55e", margin: "0 auto 16px" }} />
+                <h3 style={{ fontSize: 16, color: "#1d472b", marginBottom: 6 }}>
+                  Querying live platform connectors in parallel…
+                </h3>
+                <p style={{ color: "#547359", fontSize: 13, margin: 0 }}>
+                  Calling official YouTube Data API v3 and Twitch Helix endpoints. Deduplicating channel results.
+                </p>
+              </div>
+            ) : results.length ? (
               <>
                 <div className="table-wrap">
                   <table className="data-table discovery-table">
@@ -1093,227 +1061,274 @@ export default function DiscoverPage() {
                       <tr>
                         <th>Creator</th>
                         <th>Platform</th>
-                        <th>Category & Language</th>
+                        <th>Category</th>
                         <th>Country</th>
                         <th>Followers / Subs</th>
-                        <th>Platform Reach</th>
-                        <th>Cadence</th>
-                        <th>Business Contact</th>
+                        <th>Reach Metric</th>
+                        <th>Verification & Source</th>
+                        <th>Business Email</th>
                         <th aria-label="Save creator">Save</th>
                       </tr>
                     </thead>
                     <tbody>
                       {paginatedResults.map(({ creator, account }) => {
-                      const saved = savedAccountIds.has(creator.id);
-                      const followers = currentFollowers(account);
-                      const reach = currentReach(account);
-                      const reachMetric = reachMetricName(account);
-                      const reachSnapshot = reachMetric
-                        ? latestMetric(account, reachMetric)
-                        : undefined;
-                      const reachLabel =
-                        reachMetric === "avg_live_viewers"
-                          ? "Avg. live viewers"
-                          : reachMetric === "avg_video_views"
-                          ? "Avg. video views"
-                          : "Reach unavailable";
+                        const saved = savedAccountIds.has(creator.id);
+                        const followers = currentFollowers(account);
+                        const reach = currentReach(account);
+                        const reachMetric = reachMetricName(account);
+                        const reachSnapshot = reachMetric ? latestMetric(account, reachMetric) : undefined;
+                        const reachLabel =
+                          reachMetric === "avg_live_viewers"
+                            ? "Avg. live viewers"
+                            : reachMetric === "avg_video_views"
+                            ? "Avg. video views"
+                            : "Reach unavailable";
 
-                      return (
-                        <tr
-                          key={`${creator.id}:${account.id}`}
-                          className="clickable-row"
-                          onClick={() => router.push(`/creators/${creator.id}`)}
-                          style={{ cursor: "pointer" }}
-                        >
-                          <td>
-                            <div className="creator-cell">
-                              <span className="creator-avatar">
-                                {creator.avatar && creator.avatar.startsWith("http") ? (
-                                  <img
-                                    src={creator.avatar}
-                                    alt={creator.name}
-                                    className="avatar-table-img"
-                                    referrerPolicy="no-referrer"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = "none";
-                                    }}
-                                  />
-                                ) : null}
-                                <span>{creator.name.slice(0, 2).toUpperCase()}</span>
-                              </span>
-                              <span>
-                                <span className="creator-name">{creator.name}</span>
-                                <span className="creator-handle">{account.handle}</span>
-                              </span>
-                            </div>
-                          </td>
-                          <td>
-                            <span
-                              className={`platform-label platform-badge platform-${account.platform.toLowerCase()}`}
-                            >
-                              <i
-                                className="platform-dot"
-                                style={{ background: platformColors[account.platform] }}
-                              />
-                              {account.platform}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="creator-name">{creator.category ?? "General"}</span>
-                            <span className="creator-handle">{creator.language ?? "English"}</span>
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className="table-country-badge"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                update("country", creator.creatorCountry ?? "");
-                              }}
-                              title={`Filter by ${creator.creatorCountry ?? "Global"}`}
-                            >
-                              <span className="flag-icon">{getCountryFlag(creator.creatorCountry)}</span>
-                              <span>{creator.creatorCountry ?? "Global"}</span>
-                            </button>
-                          </td>
-                          <td>
-                            {followers === null ? (
-                              unavailable()
-                            ) : (
-                              <>
-                                <strong>{formatNumber(followers)}</strong>
-                                <span className="creator-handle">
-                                  {account.platform === "YouTube" ? "subscribers" : "followers"}
+                        const isRefreshing = refreshingCreatorId === creator.id;
+
+                        return (
+                          <tr
+                            key={`${creator.id}:${account.id}`}
+                            className="clickable-row"
+                            onClick={() => router.push(`/creators/${creator.id}`)}
+                            style={{ cursor: "pointer" }}
+                          >
+                            <td>
+                              <div className="creator-cell">
+                                <span className="creator-avatar">
+                                  {creator.avatar && creator.avatar.startsWith("http") ? (
+                                    <img
+                                      src={creator.avatar}
+                                      alt={creator.name}
+                                      className="avatar-table-img"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                      }}
+                                    />
+                                  ) : null}
+                                  <span>{creator.name.slice(0, 2).toUpperCase()}</span>
                                 </span>
-                              </>
-                            )}
-                          </td>
-                          <td>
-                            {reach === null ? (
-                              unavailable()
-                            ) : (
-                              <>
-                                <strong>{formatNumber(reach)}</strong>
-                                <span className="creator-handle">
-                                  {reachLabel} · {reachSnapshot?.periodLabel ?? "verified"}
+                                <span>
+                                  <span className="creator-name">{creator.name}</span>
+                                  <span className="creator-handle">{account.handle}</span>
                                 </span>
-                              </>
-                            )}
-                          </td>
-                          <td>{account.activity ?? "Active"}</td>
-                          <td>
-                            {creator.businessContact?.email ? (
-                              <a
-                                href={`mailto:${creator.businessContact.email}`}
-                                onClick={(e) => e.stopPropagation()}
-                                title={`Verified contact: ${creator.businessContact.email}`}
-                                className="contact-badge"
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className={`platform-label platform-badge platform-${account.platform.toLowerCase()}`}
                               >
-                                {creator.businessContact.email}
-                              </a>
-                            ) : (
-                              <span className="contact-missing">—</span>
-                            )}
-                          </td>
-                          <td>
-                            <button
-                              className={`save-button ${saved ? "saved" : ""}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSaveCreator(creator.id);
-                              }}
-                              title={saved ? "Remove from shortlist" : "Save to shortlist"}
-                              aria-label={saved ? `Saved ${creator.name}` : `Save ${creator.name}`}
-                              type="button"
-                            >
-                              <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="pagination-bar">
-                  <div className="pagination-info">
-                    Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, results.length)} of {results.length} accounts
-                  </div>
-                  <div className="pagination-actions">
-                    <button
-                      className="button button-secondary button-sm"
-                      disabled={currentPage === 1}
-                      onClick={() => {
-                        setCurrentPage((p) => Math.max(1, p - 1));
-                        window.scrollTo({ top: 220, behavior: "smooth" });
-                      }}
-                      type="button"
-                    >
-                      Previous
-                    </button>
-                    <span className="page-indicator">
-                      Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
-                    </span>
-                    <button
-                      className="button button-secondary button-sm"
-                      disabled={currentPage === totalPages}
-                      onClick={() => {
-                        setCurrentPage((p) => Math.min(totalPages, p + 1));
-                        window.scrollTo({ top: 220, behavior: "smooth" });
-                      }}
-                      type="button"
-                    >
-                      Next
-                    </button>
-                    <select
-                      className="sort-select"
-                      style={{ marginLeft: 8 }}
-                      aria-label="Items per page"
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                    >
-                      <option value={25}>25 / page</option>
-                      <option value={50}>50 / page</option>
-                      <option value={100}>100 / page</option>
-                    </select>
-                  </div>
+                                <i
+                                  className="platform-dot"
+                                  style={{ background: platformColors[account.platform] }}
+                                />
+                                {account.platform}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="creator-name">{creator.category ?? "General"}</span>
+                            </td>
+                            <td>
+                              <span>
+                                {getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Global"}
+                              </span>
+                            </td>
+                            <td>
+                              {followers === null ? (
+                                unavailable()
+                              ) : (
+                                <>
+                                  <strong>{formatNumber(followers)}</strong>
+                                  <span className="creator-handle">
+                                    {account.platform === "YouTube" ? "subscribers" : "followers"}
+                                  </span>
+                                </>
+                              )}
+                            </td>
+                            <td>
+                              {reach === null ? (
+                                unavailable()
+                              ) : (
+                                <>
+                                  <strong>{formatNumber(reach)}</strong>
+                                  <span className="creator-handle">
+                                    {reachLabel} · {reachSnapshot?.periodLabel ?? "live"}
+                                  </span>
+                                </>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                <span style={{ fontSize: 10, color: "#166534", fontWeight: 600 }}>
+                                  {account.snapshots[0]?.source || `${account.platform} API`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void refreshCreatorLive(account.platform, account.handle, creator.id);
+                                  }}
+                                  disabled={isRefreshing}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 3,
+                                    fontSize: 9,
+                                    padding: "2px 5px",
+                                    borderRadius: 4,
+                                    border: "1px solid rgba(80, 140, 80, 0.2)",
+                                    background: "rgba(255, 255, 255, 0.6)",
+                                    color: "#285d38",
+                                    cursor: "pointer",
+                                    width: "fit-content",
+                                  }}
+                                  title="Query provider API to refresh metrics now"
+                                >
+                                  <RefreshCw size={9} className={isRefreshing ? "spin-icon" : ""} />
+                                  <span>{isRefreshing ? "Refreshing…" : "Refresh"}</span>
+                                </button>
+                              </div>
+                            </td>
+                            <td>
+                              {creator.businessContact?.email ? (
+                                <a
+                                  href={`mailto:${creator.businessContact.email}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={`Verified contact source: ${creator.businessContact.sourceUrl || "Public channel listing"}`}
+                                  className="contact-badge"
+                                >
+                                  {creator.businessContact.email}
+                                </a>
+                              ) : (
+                                <span className="contact-missing">—</span>
+                              )}
+                            </td>
+                            <td>
+                              <button
+                                className={`save-button ${saved ? "saved" : ""}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSaveCreator(creator.id);
+                                }}
+                                title={saved ? "Remove from shortlist" : "Save to shortlist"}
+                                aria-label={saved ? `Saved ${creator.name}` : `Save ${creator.name}`}
+                                type="button"
+                              >
+                                <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="pagination-bar">
+                    <div className="pagination-info">
+                      Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, results.length)} of {results.length} creators
+                    </div>
+                    <div className="pagination-actions">
+                      <button
+                        className="button button-secondary button-sm"
+                        disabled={currentPage === 1}
+                        onClick={() => {
+                          setCurrentPage((p) => Math.max(1, p - 1));
+                          window.scrollTo({ top: 220, behavior: "smooth" });
+                        }}
+                        type="button"
+                      >
+                        Previous
+                      </button>
+                      <span className="page-indicator">
+                        Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+                      </span>
+                      <button
+                        className="button button-secondary button-sm"
+                        disabled={currentPage === totalPages}
+                        onClick={() => {
+                          setCurrentPage((p) => Math.min(totalPages, p + 1));
+                          window.scrollTo({ top: 220, behavior: "smooth" });
+                        }}
+                        type="button"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="empty-state">
+              /* Empty Search State */
+              <div className="empty-state" style={{ padding: "48px 24px" }}>
                 <span className="empty-icon">
-                  <UserRoundSearch size={22} />
+                  <UserRoundSearch size={24} />
                 </span>
-                <strong>No creators match your active filters</strong>
-                <p>{getEmptyFilterGuidance(filters)}</p>
-                <button
-                  className="button button-secondary button-sm"
-                  onClick={() => setFilters(initialFilters)}
-                  type="button"
-                >
-                  Clear all filters
-                </button>
+                <strong style={{ fontSize: 16, marginTop: 12 }}>
+                  {filters.query ? `No creators found for "${filters.query}"` : "Ready to Search Live Platform APIs"}
+                </strong>
+                <p style={{ maxWidth: 480, margin: "8px auto 20px" }}>
+                  {filters.query
+                    ? getEmptyFilterGuidance(filters)
+                    : "Enter any creator name, topic, or channel handle in the search bar above to query connected YouTube, Twitch, Kick, TikTok, and Instagram APIs in real-time."}
+                </p>
+
+                {/* Quick suggestions */}
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 20 }}>
+                  {["Gaming streamers", "Tech reviews", "CarryMinati", "MrBeast", "Kai Cenat"].map((term) => (
+                    <button
+                      key={term}
+                      className="button button-secondary button-sm"
+                      onClick={() => {
+                        setSearchInput(term);
+                        void executeSearch(term);
+                      }}
+                      type="button"
+                    >
+                      <Search size={12} /> {term}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+                  <button
+                    className="button button-primary button-sm"
+                    onClick={() => setImportModalOpen(true)}
+                    type="button"
+                  >
+                    <UserPlus size={13} /> Direct Handle Lookup
+                  </button>
+                  {filters.query && (
+                    <button
+                      className="button button-secondary button-sm"
+                      onClick={() => {
+                        setFilters(initialFilters);
+                        setSearchInput("");
+                        setLiveSearchResults(null);
+                      }}
+                      type="button"
+                    >
+                      Clear Search Filters
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
         </section>
       </div>
 
-      {/* Import Creator via Live API Modal */}
+      {/* Direct Handle Lookup via Live API Modal */}
       {importModalOpen && (
         <div className="modal-backdrop" onClick={() => setImportModalOpen(false)}>
           <div className="import-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-wrap">
                 <UserPlus size={18} className="modal-icon-green" />
-                <h3>Import Creator via Platform API</h3>
+                <h3>Direct Channel Handle Lookup</h3>
               </div>
               <button
                 className="icon-button"
@@ -1327,7 +1342,7 @@ export default function DiscoverPage() {
 
             <form onSubmit={handleLiveLookup} className="import-modal-body">
               <p className="modal-desc">
-                Query live platform endpoints (YouTube Data API v3, Kick API, Twitch Helix) to import any creator channel by handle.
+                Query official platform endpoints (YouTube Data API v3, Twitch Helix, Kick API v2) to lookup any channel directly by handle.
               </p>
 
               <div className="import-form-row">
@@ -1339,11 +1354,11 @@ export default function DiscoverPage() {
                     value={importPlatform}
                     onChange={(e) => setImportPlatform(e.target.value as Platform)}
                   >
-                    <option value="YouTube">YouTube</option>
-                    <option value="Twitch">Twitch</option>
-                    <option value="Kick">Kick</option>
-                    <option value="TikTok">TikTok</option>
-                    <option value="Instagram">Instagram</option>
+                    <option value="YouTube">YouTube (Data API v3)</option>
+                    <option value="Twitch">Twitch (Helix API)</option>
+                    <option value="Kick">Kick (Public API v2)</option>
+                    <option value="TikTok">TikTok (Display API)</option>
+                    <option value="Instagram">Instagram (Graph API)</option>
                   </select>
                 </label>
 
@@ -1375,19 +1390,20 @@ export default function DiscoverPage() {
                 >
                   {importLoading ? (
                     <>
-                      <RefreshCw size={14} className="spin-icon" /> Fetching Live API…
+                      <RefreshCw size={14} className="spin-icon" /> Querying Platform API…
                     </>
                   ) : (
                     <>
-                      <Search size={14} /> Fetch Creator Details
+                      <Search size={14} /> Query Handle Live
                     </>
                   )}
                 </button>
               </div>
 
               {importError && (
-                <div className="auth-error" role="alert">
-                  {importError}
+                <div className="auth-error" role="alert" style={{ marginTop: 12 }}>
+                  <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                  <span>{importError}</span>
                 </div>
               )}
 
@@ -1416,158 +1432,8 @@ export default function DiscoverPage() {
                       </small>
                     </div>
                     <span className="status-label status-connected">
-                      <Check size={12} /> Live API Verified
+                      <Check size={12} /> Live Verified
                     </span>
-                  </div>
-
-                  {/* Editable Regional & Category Details */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr",
-                      gap: "0.6rem",
-                      margin: "0.75rem 0",
-                      background: "rgba(255, 255, 255, 0.03)",
-                      padding: "0.6rem",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "0.2rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        Country (Real Location)
-                      </label>
-                      <select
-                        className="filter-select"
-                        aria-label="Creator Country"
-                        style={{ width: "100%", padding: "0.35rem 0.5rem", fontSize: "0.82rem" }}
-                        value={importResult.creatorCountry || "India"}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setImportResult((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  creatorCountry: val,
-                                  audienceInsights:
-                                    prev.audienceInsights?.map((ins, i) =>
-                                      i === 0 ? { ...ins, value: val } : ins,
-                                    ) || [],
-                                }
-                              : null,
-                          );
-                        }}
-                      >
-                        {COMMON_COUNTRIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "0.2rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        Category
-                      </label>
-                      <select
-                        className="filter-select"
-                        aria-label="Creator Category"
-                        style={{ width: "100%", padding: "0.35rem 0.5rem", fontSize: "0.82rem" }}
-                        value={importResult.category || "Entertainment"}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setImportResult((prev) => (prev ? { ...prev, category: val } : null));
-                        }}
-                      >
-                        {[
-                          "Entertainment",
-                          "Gaming",
-                          "Tech & Gadgets",
-                          "Finance & Business",
-                          "Comedy",
-                          "Vlogs & Lifestyle",
-                          "Education",
-                          "Fitness & Health",
-                          "Beauty & Fashion",
-                          "Food & Travel",
-                          "Music",
-                          "Sports",
-                          "General",
-                        ].map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          fontWeight: 600,
-                          color: "var(--text-muted)",
-                          display: "block",
-                          marginBottom: "0.2rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        Primary Language
-                      </label>
-                      <select
-                        className="filter-select"
-                        aria-label="Creator Primary Language"
-                        style={{ width: "100%", padding: "0.35rem 0.5rem", fontSize: "0.82rem" }}
-                        value={importResult.language || "Hindi"}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setImportResult((prev) => (prev ? { ...prev, language: val } : null));
-                        }}
-                      >
-                        {[
-                          "Hindi",
-                          "English",
-                          "Hinglish",
-                          "Punjabi",
-                          "Tamil",
-                          "Telugu",
-                          "Bengali",
-                          "Marathi",
-                          "Spanish",
-                          "Portuguese",
-                          "French",
-                          "German",
-                          "Japanese",
-                          "Korean",
-                        ].map((lang) => (
-                          <option key={lang} value={lang}>
-                            {lang}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </div>
 
                   <p className="preview-bio">{importResult.bio}</p>
@@ -1594,7 +1460,7 @@ export default function DiscoverPage() {
                     onClick={handleConfirmImport}
                     type="button"
                   >
-                    <Check size={14} /> Add {importResult.name} to Discovery Catalogue
+                    <Check size={14} /> Save {importResult.name} to Workspace Prospects
                   </button>
                 </div>
               )}

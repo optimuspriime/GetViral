@@ -195,7 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-          {isGuest && (
+          {isGuest && mobileOpen && (
             <Link
               href="/auth"
               className="nav-link nav-signin-link"

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { saveCreatorsToSupabase, testSupabaseConnection } from "@/lib/supabase/db-sync";
-import { REAL_CREATORS } from "@/lib/real-creators";
 import { fetchAllLiveCreators } from "@/lib/api-fetcher";
 
 export async function POST(request: Request) {
@@ -32,13 +31,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const limit = typeof body.limit === "number" ? body.limit : 50;
-
-    // 1. Seed base catalog
-    const baseToSeed = REAL_CREATORS.slice(0, limit);
-    const baseRes = await saveCreatorsToSupabase(baseToSeed, override);
-
-    // 2. Fetch and seed live API creators
+    // Fetch and sync live API creators from Kick, YouTube & Twitch
     const { creators: liveCreators } = await fetchAllLiveCreators();
     let liveInserted = 0;
     if (liveCreators.length > 0) {
@@ -48,14 +41,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      baseInserted: baseRes.inserted,
-      liveApiInserted: liveInserted,
-      totalInserted: baseRes.inserted + liveInserted,
-      message: `Successfully populated Supabase with ${baseRes.inserted + liveInserted} creators (including live Kick & YouTube API channels)!`,
+      message: `Database synchronized with ${liveInserted} live creator channels from platform APIs!`,
+      inserted: liveInserted,
+      table: "public.creators",
     });
-  } catch (err) {
+  } catch (error) {
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Seeding failed." },
+      { success: false, message: error instanceof Error ? error.message : "Failed to sync database" },
       { status: 500 },
     );
   }

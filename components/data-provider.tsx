@@ -1,8 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { REAL_CREATORS } from "@/lib/real-creators";
-import type { Creator, MetricSnapshot, ProspectList, ProspectStatus } from "@/lib/model";
+import type { Creator, ProspectList, ProspectStatus } from "@/lib/model";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   type SubscriptionPlanId,
@@ -34,6 +33,9 @@ type Store = {
   activeWorkspace: Workspace;
   hydrated: boolean;
   storageError: string | null;
+  ownerId: string | null;
+  isGuest: boolean;
+  isAuthenticated: boolean;
   addCreator: (listId: string, creatorId: string) => void;
   removeCreator: (listId: string, creatorId: string) => void;
   createList: (name: string) => string;
@@ -61,9 +63,9 @@ type Store = {
   setCreatorModalOpen: (open: boolean) => void;
 };
 
-const STORAGE_KEY = "mosaic-prospect-lists-v3";
-const CREATOR_STORAGE_KEY = "mosaic-creators-v7";
-const WORKSPACE_STORAGE_KEY = "mosaic-workspaces-v3";
+const STORAGE_KEY = "mosaic-prospect-lists-v4";
+const CREATOR_STORAGE_KEY = "mosaic-saved-creators-v4";
+const WORKSPACE_STORAGE_KEY = "mosaic-workspaces-v4";
 const StoreContext = createContext<Store | null>(null);
 
 const DEFAULT_WORKSPACES: Workspace[] = [
@@ -73,29 +75,11 @@ const DEFAULT_WORKSPACES: Workspace[] = [
 
 const INITIAL_DEFAULT_LIST: ProspectList = {
   id: "list-default-shortlist",
-  name: "Sample Campaign Shortlist (Demo Fixture)",
-  creatorIds: [
-    "creator-carryminati",
-    "creator-bhuvanbam",
-    "creator-mrbeast",
-    "creator-technogamerz",
-  ],
-  notes: {
-    "creator-carryminati": "Top Indian creator for high-engagement viral campaigns.",
-    "creator-bhuvanbam": "Ideal for storytelling, brand integration, and youth appeal.",
-    "creator-mrbeast": "Global anchor creator for grand-scale awareness campaigns.",
-  },
-  tags: {
-    "creator-carryminati": ["India", "High Priority", "Comedy"],
-    "creator-bhuvanbam": ["India", "Entertainment", "Actor"],
-    "creator-mrbeast": ["Global", "Viral"],
-  },
-  statuses: {
-    "creator-carryminati": "Shortlisted",
-    "creator-bhuvanbam": "To review",
-    "creator-mrbeast": "Shortlisted",
-    "creator-technogamerz": "To review",
-  },
+  name: "Campaign Prospects Shortlist",
+  creatorIds: [],
+  notes: {},
+  tags: {},
+  statuses: {},
 };
 
 function isValidLists(value: unknown): value is ProspectList[] {
@@ -121,13 +105,12 @@ function isValidCreator(value: unknown): value is Creator {
   return (
     typeof creator.id === "string" &&
     typeof creator.name === "string" &&
-    Array.isArray(creator.accounts) &&
-    Array.isArray(creator.audienceInsights)
+    Array.isArray(creator.accounts)
   );
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [creators, setCreators] = useState<Creator[]>(REAL_CREATORS);
+  const [creators, setCreators] = useState<Creator[]>([]);
   const [lists, setLists] = useState<ProspectList[]>([INITIAL_DEFAULT_LIST]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>(DEFAULT_WORKSPACES);
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace>(DEFAULT_WORKSPACES[0]);
@@ -144,6 +127,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);
 
+  const isGuest = useMemo(() => {
+    if (!ownerId) return true;
+    return ownerId === "guest@mosaicscout.com" || ownerId.startsWith("guest") || ownerId.startsWith("demo-guest");
+  }, [ownerId]);
+
+  const isAuthenticated = !isGuest && Boolean(ownerId);
+
   const showToast = useCallback((message: string, type: "success" | "info" | "error" = "success") => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -155,13 +145,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
     async function resolveOwner() {
-      // Auto-ensure guest session if none exists so visitor is never locked out
+      // Check localStorage for active session
       if (typeof window !== "undefined") {
         const localUser = window.localStorage.getItem("mosaic_user_session");
         if (!localUser) {
           const guestSession = {
             email: "guest@mosaicscout.com",
-            name: "Guest Explorer",
+            name: "Guest Explorer (Demo)",
             role: "viewer",
             isGuest: true,
           };
@@ -189,34 +179,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
         return;
       }
-      const { data } = await client.auth.getUser();
-      if (active) {
-        if (data.user?.id) {
-          setOwnerId(data.user.id);
-        } else if (typeof window !== "undefined") {
-          const localUser = window.localStorage.getItem("mosaic_user_session");
-          if (localUser) {
-            try {
-              const parsed = JSON.parse(localUser);
-              if (parsed.email) {
-                setOwnerId(parsed.email);
-                return;
-              }
-            } catch {}
+
+      try {
+        const { data } = await client.auth.getUser();
+        if (active) {
+          if (data.user?.id) {
+            setOwnerId(data.user.id);
+          } else if (typeof window !== "undefined") {
+            const localUser = window.localStorage.getItem("mosaic_user_session");
+            if (localUser) {
+              try {
+                const parsed = JSON.parse(localUser);
+                if (parsed.email) {
+                  setOwnerId(parsed.email);
+                  return;
+                }
+              } catch {}
+            }
+            setOwnerId("guest@mosaicscout.com");
+          } else {
+            setOwnerId("guest@mosaicscout.com");
           }
-          setOwnerId("guest@mosaicscout.com");
-        } else {
-          setOwnerId("guest@mosaicscout.com");
         }
+      } catch {
+        if (active) setOwnerId("guest@mosaicscout.com");
       }
     }
+
     void resolveOwner();
     return () => {
       active = false;
     };
   }, []);
 
-  // Hydrate from localStorage
+  // Hydrate from localStorage & Database
   useEffect(() => {
     if (!ownerId) return;
     try {
@@ -239,37 +235,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Creators
+      // Saved Creators in Browser Storage
       const savedCreators = window.localStorage.getItem(CREATOR_STORAGE_KEY);
+      let localSaved: Creator[] = [];
       if (savedCreators) {
-        const parsed = JSON.parse(savedCreators);
-        if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
-          const realIds = new Set(REAL_CREATORS.map((c) => c.id));
-          const map = new Map(REAL_CREATORS.map((c) => [c.id, c]));
-          parsed.forEach((c) => {
-            if (!realIds.has(c.id)) {
-              map.set(c.id, c);
-            }
-          });
-          setCreators([...map.values()]);
-        }
-      } else {
-        setCreators(REAL_CREATORS);
+        try {
+          const parsed = JSON.parse(savedCreators);
+          if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
+            localSaved = parsed;
+          }
+        } catch {}
       }
 
-      // Check if server database has fresh synced creators
+      // Fetch saved creators from Database
       fetch("/api/creators")
         .then((res) => res.json())
         .then((data) => {
-          if (data && Array.isArray(data.creators) && data.creators.length > 0) {
-            setCreators((prev) => {
-              const prevMap = new Map(prev.map((c) => [c.id, c]));
-              data.creators.forEach((c: Creator) => prevMap.set(c.id, c));
-              return [...prevMap.values()];
-            });
-          }
+          const dbList: Creator[] = Array.isArray(data?.creators) ? data.creators : [];
+          // Merge local and db creators
+          const map = new Map<string, Creator>();
+          localSaved.forEach((c) => map.set(c.id, c));
+          dbList.forEach((c) => map.set(c.id, c));
+          setCreators(Array.from(map.values()));
         })
-        .catch(() => {});
+        .catch(() => {
+          setCreators(localSaved);
+        });
 
       // Subscription & Role
       setSubscription(loadUserSubscription(ownerId));
@@ -301,14 +292,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [hydrated, workspaces]);
 
-  // Persist only custom creators to prevent localStorage QuotaExceededError
+  // Persist saved custom creators
   useEffect(() => {
     if (!hydrated) return;
     try {
-      const realIds = new Set(REAL_CREATORS.map((c) => c.id));
-      const customOnly = creators.filter((c) => !realIds.has(c.id));
-      if (customOnly.length > 0) {
-        window.localStorage.setItem(CREATOR_STORAGE_KEY, JSON.stringify(customOnly));
+      if (creators.length > 0) {
+        window.localStorage.setItem(CREATOR_STORAGE_KEY, JSON.stringify(creators));
       } else {
         window.localStorage.removeItem(CREATOR_STORAGE_KEY);
       }
@@ -317,71 +306,86 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [hydrated, creators]);
 
-  const addCreator = useCallback((listId: string, creatorId: string) => {
-    setLists((current) => {
-      const target = current.find((l) => l.id === listId) ?? current[0];
-      if (!target) return current;
-      if (target.creatorIds.includes(creatorId)) {
-        showToast("Creator is already in this list", "info");
-        return current;
-      }
-      showToast("Creator saved to list!", "success");
-      return current.map((list) =>
-        list.id === target.id
-          ? {
-              ...list,
-              creatorIds: [...list.creatorIds, creatorId],
-              statuses: { ...list.statuses, [creatorId]: "To review" },
-            }
-          : list,
+  const addCreator = useCallback(
+    (listId: string, creatorId: string) => {
+      setLists((current) => {
+        const target = current.find((l) => l.id === listId) ?? current[0];
+        if (!target) return current;
+        if (target.creatorIds.includes(creatorId)) {
+          showToast("Creator is already in this shortlist", "info");
+          return current;
+        }
+        showToast("Creator saved to shortlist!", "success");
+        return current.map((list) =>
+          list.id === target.id
+            ? {
+                ...list,
+                creatorIds: [...list.creatorIds, creatorId],
+                statuses: { ...list.statuses, [creatorId]: "To review" },
+              }
+            : list,
+        );
+      });
+    },
+    [showToast],
+  );
+
+  const removeCreator = useCallback(
+    (listId: string, creatorId: string) => {
+      setLists((current) =>
+        current.map((list) =>
+          list.id === listId
+            ? {
+                ...list,
+                creatorIds: list.creatorIds.filter((id) => id !== creatorId),
+              }
+            : list,
+        ),
       );
-    });
-  }, [showToast]);
+      showToast("Creator removed from shortlist", "info");
+    },
+    [showToast],
+  );
 
-  const removeCreator = useCallback((listId: string, creatorId: string) => {
-    setLists((current) =>
-      current.map((list) =>
-        list.id === listId
-          ? {
-              ...list,
-              creatorIds: list.creatorIds.filter((id) => id !== creatorId),
-            }
-          : list,
-      ),
-    );
-    showToast("Creator removed from list", "info");
-  }, [showToast]);
+  const createList = useCallback(
+    (name: string) => {
+      const id = `list-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setLists((current) => [
+        ...current,
+        { id, name: name.trim() || "Untitled List", creatorIds: [], notes: {}, tags: {}, statuses: {} },
+      ]);
+      showToast(`Created shortlist "${name}"`, "success");
+      return id;
+    },
+    [showToast],
+  );
 
-  const createList = useCallback((name: string) => {
-    const id = `list-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setLists((current) => [
-      ...current,
-      { id, name: name.trim() || "Untitled List", creatorIds: [], notes: {}, tags: {}, statuses: {} },
-    ]);
-    showToast(`Created list "${name}"`, "success");
-    return id;
-  }, [showToast]);
+  const deleteList = useCallback(
+    (listId: string) => {
+      setLists((current) => {
+        if (current.length <= 1) {
+          showToast("Cannot delete the only remaining list", "error");
+          return current;
+        }
+        const target = current.find((l) => l.id === listId);
+        showToast(`Deleted shortlist "${target?.name ?? ""}"`, "info");
+        return current.filter((l) => l.id !== listId);
+      });
+    },
+    [showToast],
+  );
 
-  const deleteList = useCallback((listId: string) => {
-    setLists((current) => {
-      if (current.length <= 1) {
-        showToast("Cannot delete the only remaining list", "error");
-        return current;
-      }
-      const target = current.find((l) => l.id === listId);
-      showToast(`Deleted list "${target?.name ?? ""}"`, "info");
-      return current.filter((l) => l.id !== listId);
-    });
-  }, [showToast]);
-
-  const renameList = useCallback((listId: string, newName: string) => {
-    setLists((current) =>
-      current.map((list) =>
-        list.id === listId ? { ...list, name: newName.trim() || list.name } : list,
-      ),
-    );
-    showToast("List renamed successfully", "success");
-  }, [showToast]);
+  const renameList = useCallback(
+    (listId: string, newName: string) => {
+      setLists((current) =>
+        current.map((list) =>
+          list.id === listId ? { ...list, name: newName.trim() || list.name } : list,
+        ),
+      );
+      showToast("Shortlist renamed successfully", "success");
+    },
+    [showToast],
+  );
 
   const updateNote = useCallback((listId: string, creatorId: string, note: string) => {
     setLists((current) =>
@@ -391,16 +395,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const updateStatus = useCallback((listId: string, creatorId: string, status: ProspectStatus) => {
-    setLists((current) =>
-      current.map((list) =>
-        list.id === listId
-          ? { ...list, statuses: { ...list.statuses, [creatorId]: status } }
-          : list,
-      ),
-    );
-    showToast(`Status updated to "${status}"`, "info");
-  }, [showToast]);
+  const updateStatus = useCallback(
+    (listId: string, creatorId: string, status: ProspectStatus) => {
+      setLists((current) =>
+        current.map((list) =>
+          list.id === listId
+            ? { ...list, statuses: { ...list.statuses, [creatorId]: status } }
+            : list,
+        ),
+      );
+      showToast(`Status updated to "${status}"`, "info");
+    },
+    [showToast],
+  );
 
   const updateTags = useCallback((listId: string, creatorId: string, tags: string[]) => {
     setLists((current) =>
@@ -410,49 +417,63 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const setActiveWorkspace = useCallback((ws: Workspace) => {
-    setActiveWorkspaceState(ws);
-    showToast(`Switched to workspace "${ws.name}"`, "info");
-  }, [showToast]);
+  const setActiveWorkspace = useCallback(
+    (ws: Workspace) => {
+      setActiveWorkspaceState(ws);
+      showToast(`Switched to workspace "${ws.name}"`, "info");
+    },
+    [showToast],
+  );
 
-  const createWorkspace = useCallback((name: string) => {
-    const newWs: Workspace = {
-      id: `ws-${Date.now()}`,
-      name: name.trim() || "New Workspace",
-      role: "Owner",
-    };
-    setWorkspaces((prev) => [...prev, newWs]);
-    setActiveWorkspaceState(newWs);
-    showToast(`Created workspace "${newWs.name}"`, "success");
-    return newWs;
-  }, [showToast]);
+  const createWorkspace = useCallback(
+    (name: string) => {
+      const newWs: Workspace = {
+        id: `ws-${Date.now()}`,
+        name: name.trim() || "New Workspace",
+        role: "Owner",
+      };
+      setWorkspaces((prev) => [...prev, newWs]);
+      setActiveWorkspaceState(newWs);
+      showToast(`Created workspace "${newWs.name}"`, "success");
+      return newWs;
+    },
+    [showToast],
+  );
 
-  const renameWorkspace = useCallback((id: string, name: string) => {
-    setWorkspaces((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, name: name.trim() || w.name } : w)),
-    );
-    setActiveWorkspaceState((curr) => (curr.id === id ? { ...curr, name } : curr));
-    showToast("Workspace renamed", "success");
-  }, [showToast]);
+  const renameWorkspace = useCallback(
+    (id: string, name: string) => {
+      setWorkspaces((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, name: name.trim() || w.name } : w)),
+      );
+      setActiveWorkspaceState((curr) => (curr.id === id ? { ...curr, name } : curr));
+      showToast("Workspace renamed", "success");
+    },
+    [showToast],
+  );
 
-  const addCustomCreator = useCallback((creator: Creator) => {
-    setCreators((prev) => {
-      const exists = prev.some((c) => c.id === creator.id);
-      if (exists) return prev.map((c) => (c.id === creator.id ? creator : c));
-      return [creator, ...prev];
-    });
+  const addCustomCreator = useCallback(
+    (creator: Creator) => {
+      setCreators((prev) => {
+        const exists = prev.some((c) => c.id === creator.id);
+        if (exists) return prev.map((c) => (c.id === creator.id ? creator : c));
+        return [creator, ...prev];
+      });
 
-    // Also persist to server/Supabase
-    try {
-      fetch("/api/creators", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(creator),
-      }).catch(() => {});
-    } catch {}
+      // Persist to server if authenticated
+      if (!isGuest) {
+        try {
+          fetch("/api/creators", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(creator),
+          }).catch(() => {});
+        } catch {}
+      }
 
-    showToast(`Added ${creator.name} to catalogue!`, "success");
-  }, [showToast]);
+      showToast(`Saved ${creator.name} to workspace!`, "success");
+    },
+    [isGuest, showToast],
+  );
 
   const syncAllPlatforms = useCallback(async () => {
     setIsSyncing(true);
@@ -461,69 +482,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (data.success && Array.isArray(data.creators) && data.creators.length > 0) {
-        // Merge real-time live fetched creators into the state
         setCreators((prev) => {
-          const liveMap = new Map<string, Creator>(data.creators.map((c: Creator) => [c.id, c]));
-          const updated = prev.map((c) => liveMap.get(c.id) || c);
-          // Add any brand-new live creators that didn't exist before
-          data.creators.forEach((c: Creator) => {
-            if (!prev.some((p) => p.id === c.id)) {
-              updated.unshift(c);
-            }
-          });
-          return updated;
+          const map = new Map<string, Creator>(prev.map((c) => [c.id, c]));
+          data.creators.forEach((c: Creator) => map.set(c.id, c));
+          return Array.from(map.values());
         });
 
         const dbSaved = data.database?.savedToDb;
         showToast(
           dbSaved
-            ? `🎉 Live synced ${data.creators.length} creators directly from Kick & YouTube APIs to Supabase Database!`
-            : `⚡ Live synced ${data.creators.length} creators directly from Kick & YouTube APIs!`,
+            ? `🎉 Live synced ${data.creators.length} creators directly from platform APIs to Supabase Database!`
+            : `⚡ Live synced ${data.creators.length} creators directly from platform APIs!`,
           "success",
         );
       } else {
-        const nowStr = new Date().toISOString();
-        setCreators((prev) =>
-          prev.map((c) => ({
-            ...c,
-            accounts: c.accounts.map((a) => {
-              const currentSub = a.snapshots.find((s) => s.metricName === "followers")?.value ?? 50000;
-              const organicDelta = Math.floor(Math.sin(a.id.length * 7) * 250);
-              const updatedSubs = Math.max(1000, currentSub + organicDelta);
-              const freshSnapshot: MetricSnapshot = {
-                id: `${a.id}-sync-${Date.now()}`,
-                metricName: "followers",
-                value: updatedSubs,
-                unit: "count",
-                collectedAt: nowStr,
-                windowStart: null,
-                windowEnd: null,
-                periodLabel: "Live Platform API Sync",
-                sampleSize: null,
-                source: "Live Platform API Sync",
-                status: "public",
-              };
-              return {
-                ...a,
-                activity: a.activity ? a.activity.replace(/(\d+)/, (m) => String(parseInt(m, 10))) : "Active today",
-                snapshots: [freshSnapshot, ...a.snapshots.slice(0, 20)],
-              };
-            }),
-          })),
-        );
         showToast(
-          `Synchronized ${creators.length} creators across YouTube, Twitch, Kick, TikTok & Instagram with live platform data!`,
-          "success",
+          "Federated sync completed. Configure platform API keys in Settings to enable automated background sync.",
+          "info",
         );
       }
 
       setLastSyncedAt(new Date());
     } catch {
-      showToast("Synchronized data with live platform APIs", "success");
+      showToast("Synchronized data with live platform APIs", "info");
     } finally {
       setIsSyncing(false);
     }
-  }, [creators.length, showToast]);
+  }, [showToast]);
 
   const setUserRole = useCallback(
     (role: UserRole) => {
@@ -590,6 +575,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       activeWorkspace,
       hydrated,
       storageError,
+      ownerId,
+      isGuest,
+      isAuthenticated,
       addCreator,
       removeCreator,
       createList,
@@ -623,6 +611,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       activeWorkspace,
       hydrated,
       storageError,
+      ownerId,
+      isGuest,
+      isAuthenticated,
       addCreator,
       removeCreator,
       createList,

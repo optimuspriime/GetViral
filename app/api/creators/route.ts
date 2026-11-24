@@ -1,100 +1,166 @@
 import { NextResponse } from "next/server";
-import { REAL_CREATORS } from "@/lib/real-creators";
-import type { Creator } from "@/lib/model";
-import { currentFollowers, currentReach } from "@/lib/metrics";
+import type { Creator, Platform } from "@/lib/model";
+import { federatedSearch } from "@/lib/connectors/federated";
 import { loadCreatorsFromSupabase, saveCreatorsToSupabase } from "@/lib/supabase/db-sync";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const q = searchParams.get("q")?.toLowerCase().trim() || "";
-  const platform = searchParams.get("platform");
+  const q = searchParams.get("q")?.trim() || "";
+  const platform = searchParams.get("platform") as Platform | "All platforms" | null;
   const category = searchParams.get("category");
   const country = searchParams.get("country");
-  const minFollowers = searchParams.get("minFollowers");
-  const maxFollowers = searchParams.get("maxFollowers");
-  const sort = searchParams.get("sort") || "name";
 
-  // Start with verified local catalog (1,042 creators, 2,062 accounts)
-  // Merge Supabase database records (cloud-synced / custom / updated records)
-  const creatorMap = new Map<string, Creator>();
-  for (const c of REAL_CREATORS) {
-    creatorMap.set(c.id, c);
+  // 1. If query is provided, execute real federated live search across connected platform APIs
+  if (q) {
+    const federated = await federatedSearch(q, {
+      platform: platform && platform !== "All platforms" ? platform : undefined,
+      limit: 20,
+    });
+
+    // Also search saved database creators if any
+    let dbMatches: Creator[] = [];
+    try {
+      const dbCreators = await loadCreatorsFromSupabase();
+      if (dbCreators && dbCreators.length > 0) {
+        dbMatches = dbCreators.filter(
+          (c) =>
+            c.name.toLowerCase().includes(q.toLowerCase()) ||
+            c.bio.toLowerCase().includes(q.toLowerCase()) ||
+            c.accounts.some((a) => a.handle.toLowerCase().includes(q.toLowerCase())),
+        );
+      }
+    } catch {
+      // Database query error handled gracefully
+    }
+
+    // Convert normalized creators into UI-compatible Creator format
+    const liveAsCreators: Creator[] = federated.creators.map((c) => ({
+      id: c.id,
+      name: c.name,
+      category: c.category || "General",
+      language: c.language || "English",
+      creatorCountry: c.country,
+      creatorCountrySource: "Live Platform API",
+      audienceInsights: [],
+      bio: c.bio || `${c.name} on ${c.platform}`,
+      avatar: c.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      businessContact: c.businessContact,
+      accounts: [
+        {
+          id: `acc-${c.id}`,
+          platform: c.platform,
+          handle: c.handle,
+          profileUrl: c.profileUrl,
+          activity: c.isLiveStream ? "Live Now" : "Active",
+          snapshots: [
+            ...(c.followers !== null
+              ? [
+                  {
+                    id: `snap-${c.id}-followers`,
+                    metricName: "followers",
+                    value: c.followers,
+                    unit: "count" as const,
+                    collectedAt: c.fetchedAt,
+                    windowStart: null,
+                    windowEnd: null,
+                    periodLabel: null,
+                    sampleSize: null,
+                    source: c.source,
+                    status: "public" as const,
+                  },
+                ]
+              : []),
+            ...(c.reach !== null
+              ? [
+                  {
+                    id: `snap-${c.id}-reach`,
+                    metricName: c.reachMetric || "avg_views",
+                    value: c.reach,
+                    unit: c.reachMetric === "avg_live_viewers" ? ("count" as const) : ("views" as const),
+                    collectedAt: c.fetchedAt,
+                    windowStart: null,
+                    windowEnd: null,
+                    periodLabel: c.isLiveStream ? "Current live stream" : "Recent content",
+                    sampleSize: 10,
+                    source: c.source,
+                    status: "public" as const,
+                  },
+                ]
+              : []),
+          ],
+        },
+      ],
+    }));
+
+    // Merge live results and saved database matches, deduplicating by handle & platform
+    const creatorMap = new Map<string, Creator>();
+    for (const c of liveAsCreators) {
+      creatorMap.set(c.id, c);
+    }
+    for (const dbc of dbMatches) {
+      creatorMap.set(dbc.id, dbc);
+    }
+
+    let filtered = Array.from(creatorMap.values());
+
+    if (category && category !== "All categories") {
+      filtered = filtered.filter((c) => c.category === category);
+    }
+
+    if (country) {
+      filtered = filtered.filter((c) =>
+        c.creatorCountry?.toLowerCase().includes(country.toLowerCase()),
+      );
+    }
+
+    return NextResponse.json({
+      query: q,
+      total: filtered.length,
+      creators: filtered,
+      connectorStatuses: federated.connectorStatuses,
+      source: "Live Federated Platform Connectors",
+      isLive: true,
+    });
   }
 
+  // 2. If no query is provided, return actual saved creators from user's Supabase database
+  let savedCreators: Creator[] = [];
   try {
     const dbCreators = await loadCreatorsFromSupabase();
     if (dbCreators && dbCreators.length > 0) {
-      for (const dbc of dbCreators) {
-        const existing = creatorMap.get(dbc.id);
-        creatorMap.set(dbc.id, existing ? { ...existing, ...dbc } : dbc);
-      }
+      savedCreators = dbCreators;
     }
   } catch {
-    // Fallback to verified catalog
+    // Database connection fallback
   }
-
-  const baseList: Creator[] = Array.from(creatorMap.values());
-  let filtered = [...baseList];
-
-  if (q) {
-    filtered = filtered.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.bio.toLowerCase().includes(q) ||
-        (c.category && c.category.toLowerCase().includes(q)) ||
-        c.accounts.some((a) => a.handle.toLowerCase().includes(q)),
-    );
-  }
-
-  if (platform && platform !== "All platforms") {
-    filtered = filtered.filter((c) =>
-      c.accounts.some((a) => a.platform.toLowerCase() === platform.toLowerCase()),
-    );
-  }
-
-  if (category && category !== "All categories") {
-    filtered = filtered.filter((c) => c.category === category);
-  }
-
-  if (country) {
-    filtered = filtered.filter((c) =>
-      c.creatorCountry?.toLowerCase().includes(country.toLowerCase()),
-    );
-  }
-
-  if (minFollowers || maxFollowers) {
-    const min = minFollowers ? parseInt(minFollowers, 10) : 0;
-    const max = maxFollowers ? parseInt(maxFollowers, 10) : Infinity;
-    filtered = filtered.filter((c) =>
-      c.accounts.some((a) => {
-        const followers = currentFollowers(a);
-        return followers !== null && followers >= min && followers <= max;
-      }),
-    );
-  }
-
-  filtered.sort((a, b) => {
-    if (sort === "followers") {
-      const aMax = Math.max(...a.accounts.map((acc) => currentFollowers(acc) ?? 0));
-      const bMax = Math.max(...b.accounts.map((acc) => currentFollowers(acc) ?? 0));
-      return bMax - aMax;
-    }
-    if (sort === "reach") {
-      const aMax = Math.max(...a.accounts.map((acc) => currentReach(acc) ?? 0));
-      const bMax = Math.max(...b.accounts.map((acc) => currentReach(acc) ?? 0));
-      return bMax - aMax;
-    }
-    return a.name.localeCompare(b.name);
-  });
 
   return NextResponse.json({
-    total: filtered.length,
-    creators: filtered,
+    query: "",
+    total: savedCreators.length,
+    creators: savedCreators,
+    source: "Saved Workspace Database",
+    isLive: false,
   });
 }
 
 export async function POST(request: Request) {
   try {
+    // Verify server-side authorization: Reject guest or unauthenticated write attempts
+    const cookieHeader = request.headers.get("cookie") || "";
+    const isGuestCookie =
+      cookieHeader.includes("mosaic_user_session=guest") ||
+      cookieHeader.includes("mosaic_user_session=demo-guest") ||
+      cookieHeader.includes("guest%40mosaicscout.com") ||
+      cookieHeader.includes("demo-guest%40mosaicscout.com");
+    const hasSessionCookie = cookieHeader.includes("mosaic_user_session=");
+
+    if (isGuestCookie || !hasSessionCookie) {
+      return NextResponse.json(
+        { error: "Unauthorized: Sign-in required. Guest sandbox sessions cannot write to database." },
+        { status: 401 },
+      );
+    }
+
     const body = (await request.json()) as Partial<Creator>;
     if (!body.name || !body.accounts || body.accounts.length === 0) {
       return NextResponse.json(
@@ -108,24 +174,32 @@ export async function POST(request: Request) {
       name: body.name,
       category: body.category ?? "General",
       language: body.language ?? "English",
-      creatorCountry: body.creatorCountry ?? "Global",
-      creatorCountrySource: body.creatorCountrySource ?? "User Submitted Record",
+      creatorCountry: body.creatorCountry ?? "United States",
+      creatorCountrySource: "User Submission",
       bio: body.bio ?? "",
       avatar: body.avatar ?? "",
-      accounts: body.accounts,
-      audienceInsights: body.audienceInsights ?? [],
       businessContact: body.businessContact ?? null,
+      accounts: body.accounts,
+      audienceInsights: body.audienceInsights || [],
     };
 
-    // Save to Supabase if connected
+    // Save to database
+    let existing: Creator[] = [];
     try {
-      await saveCreatorsToSupabase([newCreator]);
-    } catch (saveErr) {
-      console.warn("Could not save creator to Supabase:", saveErr);
-    }
+      existing = await loadCreatorsFromSupabase();
+    } catch {}
 
-    return NextResponse.json(newCreator, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Invalid creator payload." }, { status: 400 });
+    const updated = [newCreator, ...existing.filter((c) => c.id !== newCreator.id)];
+    await saveCreatorsToSupabase(updated);
+
+    return NextResponse.json({
+      success: true,
+      creator: newCreator,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to save creator" },
+      { status: 500 },
+    );
   }
 }

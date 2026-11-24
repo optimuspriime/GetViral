@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchAllLiveCreators } from "@/lib/api-fetcher";
 import { saveCreatorsToSupabase, testSupabaseConnection } from "@/lib/supabase/db-sync";
-import { REAL_CREATORS } from "@/lib/real-creators";
 
 export async function POST() {
   const syncTimestamp = new Date().toISOString();
@@ -15,11 +14,6 @@ export async function POST() {
     let savedToDb = false;
 
     if (dbStatus.connected && dbStatus.tableExists) {
-      // If database is empty, seed it with the core catalog first
-      if (dbStatus.creatorCount === 0) {
-        await saveCreatorsToSupabase(REAL_CREATORS.slice(0, 50));
-      }
-
       // Upsert the newly fetched live creators into Supabase
       if (liveCreators.length > 0) {
         const saveRes = await saveCreatorsToSupabase(liveCreators);
