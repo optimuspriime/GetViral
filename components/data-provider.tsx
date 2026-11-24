@@ -243,32 +243,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Saved Creators in Browser Storage
-      const savedCreators = window.localStorage.getItem(CREATOR_STORAGE_KEY);
-      let localSaved: Creator[] = [];
-      if (savedCreators) {
-        try {
-          const parsed = JSON.parse(savedCreators);
-          if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
-            localSaved = parsed;
-          }
-        } catch {}
-      }
+      // Saved Creators: Guests see an empty sandbox (0 saved prospects)
+      if (isGuest) {
+        setCreators([]);
+      } else {
+        // Saved Creators in Browser Storage for signed-in user
+        const savedCreators = window.localStorage.getItem(`${CREATOR_STORAGE_KEY}:${ownerId}`);
+        let localSaved: Creator[] = [];
+        if (savedCreators) {
+          try {
+            const parsed = JSON.parse(savedCreators);
+            if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
+              localSaved = parsed;
+            }
+          } catch {}
+        }
 
-      // Fetch saved creators from Database
-      fetch("/api/creators")
-        .then((res) => res.json())
-        .then((data) => {
-          const dbList: Creator[] = Array.isArray(data?.creators) ? data.creators : [];
-          // Merge local and db creators
-          const map = new Map<string, Creator>();
-          localSaved.forEach((c) => map.set(c.id, c));
-          dbList.forEach((c) => map.set(c.id, c));
-          setCreators(Array.from(map.values()));
-        })
-        .catch(() => {
-          setCreators(localSaved);
-        });
+        // Fetch saved creators from Database for signed-in user
+        fetch("/api/creators")
+          .then((res) => res.json())
+          .then((data) => {
+            const dbList: Creator[] = Array.isArray(data?.creators) ? data.creators : [];
+            // Merge local and db creators
+            const map = new Map<string, Creator>();
+            localSaved.forEach((c) => map.set(c.id, c));
+            dbList.forEach((c) => map.set(c.id, c));
+            setCreators(Array.from(map.values()));
+          })
+          .catch(() => {
+            setCreators(localSaved);
+          });
+      }
 
       // Subscription & Role
       setSubscription(loadUserSubscription(ownerId));
@@ -278,7 +283,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setHydrated(true);
     }
-  }, [ownerId]);
+  }, [ownerId, isGuest]);
 
   // Persist Lists
   useEffect(() => {
@@ -316,6 +321,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addCreator = useCallback(
     (listId: string, creatorId: string) => {
+      if (isGuest) {
+        showToast("Sign in required: Guest preview sessions cannot save creators to CRM shortlists.", "error");
+        return;
+      }
       setLists((current) => {
         const target = current.find((l) => l.id === listId) ?? current[0];
         if (!target) return current;
@@ -335,11 +344,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         );
       });
     },
-    [showToast],
+    [isGuest, showToast],
   );
 
   const removeCreator = useCallback(
     (listId: string, creatorId: string) => {
+      if (isGuest) {
+        showToast("Sign in required: Guest preview sessions cannot modify CRM shortlists.", "error");
+        return;
+      }
       setLists((current) =>
         current.map((list) =>
           list.id === listId
@@ -352,11 +365,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       );
       showToast("Creator removed from shortlist", "info");
     },
-    [showToast],
+    [isGuest, showToast],
   );
 
   const createList = useCallback(
     (name: string) => {
+      if (isGuest) {
+        showToast("Sign in required: Guest preview sessions cannot create shortlists.", "error");
+        return "";
+      }
       const id = `list-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       setLists((current) => [
         ...current,
@@ -365,7 +382,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       showToast(`Created shortlist "${name}"`, "success");
       return id;
     },
-    [showToast],
+    [isGuest, showToast],
   );
 
   const deleteList = useCallback(
@@ -461,6 +478,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addCustomCreator = useCallback(
     (creator: Creator) => {
+      if (isGuest) {
+        showToast("Sign in required: Guest preview sessions cannot save creators to workspace.", "error");
+        return;
+      }
+
       setCreators((prev) => {
         const exists = prev.some((c) => c.id === creator.id);
         if (exists) return prev.map((c) => (c.id === creator.id ? creator : c));
@@ -468,15 +490,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
 
       // Persist to server if authenticated
-      if (!isGuest) {
-        try {
-          fetch("/api/creators", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(creator),
-          }).catch(() => {});
-        } catch {}
-      }
+      try {
+        fetch("/api/creators", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(creator),
+        }).catch(() => {});
+      } catch {}
 
       showToast(`Saved ${creator.name} to workspace!`, "success");
     },

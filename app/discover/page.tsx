@@ -50,12 +50,28 @@ const initialFilters: Filters = {
 
 const platformsList = ["All platforms", "YouTube", "Twitch", "Kick", "TikTok", "Instagram"];
 
-function getEmptyFilterGuidance(filters: Filters): string {
+function getEmptyFilterGuidance(
+  filters: Filters,
+  providerSummary?: {
+    succeeded: string[];
+    failed: string[];
+    unconfigured: string[];
+    unsupported: string[];
+  } | null,
+): string {
+  // If broad discovery connectors (YouTube & Twitch) are unconfigured in server env
+  const isBroadSearchUnconfigured =
+    providerSummary &&
+    providerSummary.succeeded.length === 0 &&
+    providerSummary.unconfigured.includes("YouTube") &&
+    providerSummary.unconfigured.includes("Twitch");
+
+  if (isBroadSearchUnconfigured) {
+    return 'Live keyword discovery across YouTube and Twitch requires server API credentials (YOUTUBE_DATA_API_KEY, TWITCH_CLIENT_ID / SECRET) in Settings. You can lookup creators by exact handle on Kick (public API v2) or use Direct Handle Lookup below.';
+  }
+
   const suggestions: string[] = [];
 
-  if (filters.query.trim()) {
-    suggestions.push(`checking for typos in "${filters.query.trim()}"`);
-  }
   if (filters.minFollowers || filters.maxFollowers) {
     suggestions.push("widening your follower range");
   }
@@ -79,6 +95,9 @@ function getEmptyFilterGuidance(filters: Filters): string {
   }
   if (filters.platform && filters.platform !== "All platforms") {
     suggestions.push(`switching from ${filters.platform} to "All platforms"`);
+  }
+  if (filters.query.trim()) {
+    suggestions.push(`checking for typos in "${filters.query.trim()}"`);
   }
 
   if (suggestions.length === 0) {
@@ -442,6 +461,10 @@ export default function DiscoverPage() {
 
   function toggleSaveCreator(creatorId: string) {
     if (!hydrated) return;
+    if (isGuest) {
+      showToast("Sign in required: Guest preview sessions cannot save creators to CRM shortlists.", "error");
+      return;
+    }
     const targetList = lists[0] || { id: createList("Priority Shortlist") };
     if (targetList.creatorIds.includes(creatorId)) {
       removeCreator(targetList.id, creatorId);
@@ -1255,16 +1278,23 @@ export default function DiscoverPage() {
                                   <>
                                     <strong>{formatNumber(reach)}</strong>
                                     <span className="creator-handle">
-                                      {reachLabel} · {reachSnapshot?.periodLabel ?? "live"}
+                                      {reachLabel} · {liveSearchResults !== null ? (reachSnapshot?.periodLabel ?? "live") : `Saved (${new Date(reachSnapshot?.collectedAt || Date.now()).toLocaleDateString()})`}
                                     </span>
                                   </>
                                 )}
                               </td>
                               <td>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                                  <span style={{ fontSize: 10, color: "#166534", fontWeight: 600 }}>
-                                    {account.snapshots[0]?.source || `${account.platform} API`}
+                                  <span style={{ fontSize: 10, color: liveSearchResults !== null ? "#166534" : "#475569", fontWeight: 600 }}>
+                                    {liveSearchResults !== null
+                                      ? (account.snapshots[0]?.source || `${account.platform} API`)
+                                      : "Saved Workspace Database"}
                                   </span>
+                                  {liveSearchResults === null && account.snapshots[0]?.collectedAt && (
+                                    <small style={{ fontSize: 9, color: "var(--muted, #64748b)" }}>
+                                      Collected: {new Date(account.snapshots[0].collectedAt).toLocaleDateString()}
+                                    </small>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1314,12 +1344,30 @@ export default function DiscoverPage() {
                               <td>
                                 <button
                                   className={`save-button ${saved ? "saved" : ""}`}
+                                  disabled={isGuest}
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (isGuest) {
+                                      showToast("Sign in required: Guest preview sessions cannot save creators to CRM shortlists.", "error");
+                                      return;
+                                    }
                                     toggleSaveCreator(creator.id);
                                   }}
-                                  title={saved ? "Remove from shortlist" : "Save to shortlist"}
-                                  aria-label={saved ? `Saved ${creator.name}` : `Save ${creator.name}`}
+                                  title={
+                                    isGuest
+                                      ? "Sign in required to save creators to CRM shortlists"
+                                      : saved
+                                      ? "Remove from shortlist"
+                                      : "Save to shortlist"
+                                  }
+                                  aria-label={
+                                    isGuest
+                                      ? "Sign in to save creator"
+                                      : saved
+                                      ? `Saved ${creator.name}`
+                                      : `Save ${creator.name}`
+                                  }
+                                  style={isGuest ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
                                   type="button"
                                 >
                                   <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
@@ -1380,12 +1428,31 @@ export default function DiscoverPage() {
 
                           <button
                             className={`save-button ${saved ? "saved" : ""}`}
+                            disabled={isGuest}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (isGuest) {
+                                showToast("Sign in required: Guest preview sessions cannot save creators to CRM shortlists.", "error");
+                                return;
+                              }
                               toggleSaveCreator(creator.id);
                             }}
                             type="button"
-                            aria-label={saved ? `Remove ${creator.name}` : `Save ${creator.name}`}
+                            title={
+                              isGuest
+                                ? "Sign in required to save creators to CRM shortlists"
+                                : saved
+                                ? "Remove from shortlist"
+                                : "Save to shortlist"
+                            }
+                            aria-label={
+                              isGuest
+                                ? "Sign in to save creator"
+                                : saved
+                                ? `Remove ${creator.name}`
+                                : `Save ${creator.name}`
+                            }
+                            style={isGuest ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
                           >
                             <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
                           </button>
@@ -1432,7 +1499,9 @@ export default function DiscoverPage() {
                           <div className="provenance-row">
                             <span className="provenance-label">Data Source:</span>
                             <span className="provenance-val">
-                              {reachSnapshot?.source || (account.snapshots[0]?.source ? account.snapshots[0].source : `${account.platform} Official API`)}
+                              {liveSearchResults !== null
+                                ? (reachSnapshot?.source || (account.snapshots[0]?.source ? account.snapshots[0].source : `${account.platform} Official API`))
+                                : `Saved Workspace Database (Collected: ${new Date(account.snapshots[0]?.collectedAt || Date.now()).toLocaleDateString()})`}
                             </span>
                           </div>
                           <div className="provenance-row">
@@ -1527,7 +1596,7 @@ export default function DiscoverPage() {
                 </strong>
                 <p style={{ maxWidth: 480, margin: "8px auto 20px" }}>
                   {filters.query
-                    ? getEmptyFilterGuidance(filters)
+                    ? getEmptyFilterGuidance(filters, providerSummary)
                     : "Enter any creator name, topic, or channel handle in the search bar above to query connected YouTube, Twitch, Kick, TikTok, and Instagram APIs in real-time."}
                 </p>
 

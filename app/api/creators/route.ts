@@ -129,7 +129,27 @@ export async function GET(request: Request) {
     });
   }
 
-  // 2. If no query is provided, return actual saved creators from user's Supabase database
+  // 2. If no query is provided, check session authorization:
+  // Guests/signed-out sessions see 0 saved prospects (empty sandbox).
+  // Signed-in users see their saved creators from their workspace database.
+  const cookieHeader = request.headers.get("cookie") || "";
+  const isGuestRequest =
+    !cookieHeader.includes("mosaic_user_session=") ||
+    cookieHeader.includes("mosaic_user_session=guest") ||
+    cookieHeader.includes("mosaic_user_session=demo-guest") ||
+    cookieHeader.includes("guest%40") ||
+    cookieHeader.includes("demo-guest%40");
+
+  if (isGuestRequest) {
+    return NextResponse.json({
+      query: "",
+      total: 0,
+      creators: [],
+      source: "Guest Sandbox (Read-Only)",
+      isLive: false,
+    });
+  }
+
   let savedCreators: Creator[] = [];
   try {
     const dbCreators = await loadCreatorsFromSupabase();

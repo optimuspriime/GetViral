@@ -7,6 +7,7 @@ import {
   Zap, User, Copy
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { Platform } from "@/lib/model";
 import { INTEGRATIONS } from "@/lib/integrations";
 import { getSupabaseBrowserClient, getSupabaseConfig, saveSupabaseConfig } from "@/lib/supabase/browser";
 import { useProspects } from "@/components/data-provider";
@@ -27,6 +28,39 @@ export default function SettingsPage() {
   const [authError, setAuthError] = useState("");
   const [testingPlatform, setTestingPlatform] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, { status: "success" | "error"; message: string }>>({});
+
+  // Dynamic Server Integration Health State
+  const [integrationsStatus, setIntegrationsStatus] = useState<
+    Array<{
+      platform: Platform;
+      connected: boolean;
+      mode: string;
+      connectorStatus: string;
+      statusNote: string;
+      documentationUrl: string;
+      setup: string;
+      limitation: string;
+    }>
+  >(() =>
+    INTEGRATIONS.map((i) => ({
+      platform: i.platform,
+      connected: i.platform === "Kick",
+      mode: i.platform === "Kick" ? "active_api" : "unconfigured",
+      connectorStatus: i.connectorStatus,
+      statusNote: i.statusNote,
+      documentationUrl: i.documentationUrl,
+      setup: i.setup,
+      limitation: i.limitation,
+    })),
+  );
+
+  const [envStatus, setEnvStatus] = useState<{
+    YOUTUBE_DATA_API_KEY?: boolean;
+    TWITCH_CLIENT_ID?: boolean;
+    TWITCH_CLIENT_SECRET?: boolean;
+    KICK_PUBLIC_API?: boolean;
+    NEXT_PUBLIC_SUPABASE_URL?: boolean;
+  }>({});
 
   // Supabase Configuration State
   const [supabaseUrl, setSupabaseUrl] = useState("");
@@ -104,6 +138,19 @@ export default function SettingsPage() {
         setUserEmail(null);
         setAuthLoading(false);
       });
+
+    // Inspect live server integration health
+    fetch("/api/integrations")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.integrations)) {
+          setIntegrationsStatus(data.integrations);
+        }
+        if (data.envStatus) {
+          setEnvStatus(data.envStatus);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   async function handleSaveSupabase(e: React.FormEvent) {
@@ -410,7 +457,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
             </div>
 
             <div className="integration-list">
-              {INTEGRATIONS.map((integration) => {
+              {integrationsStatus.map((integration) => {
                 const isTesting = testingPlatform === integration.platform;
                 const result = testResult[integration.platform];
 
@@ -429,8 +476,22 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     <div className="integration-copy">
                       <div className="integration-title-line">
                         <strong>{integration.platform}</strong>
-                        <span className="live-verified-badge" style={{ backgroundColor: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
-                          <Check size={11} /> {integration.connectorStatus}
+                        <span
+                          className="live-verified-badge"
+                          style={{
+                            backgroundColor: integration.connected
+                              ? "rgba(34, 197, 94, 0.12)"
+                              : "rgba(234, 179, 8, 0.12)",
+                            color: integration.connected ? "#15803d" : "#b45309",
+                            border: `1px solid ${
+                              integration.connected
+                                ? "rgba(34, 197, 94, 0.3)"
+                                : "rgba(234, 179, 8, 0.3)"
+                            }`,
+                          }}
+                        >
+                          {integration.connected ? <Check size={11} /> : <AlertCircle size={11} />}{" "}
+                          {integration.connectorStatus}
                         </span>
                       </div>
                       <span>{integration.setup}</span>
@@ -928,7 +989,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                       <div>{dbLiveStatus.message}</div>
                       {dbLiveStatus.tableExists && (
                         <div style={{ marginTop: 4, color: "#9ca3af" }}>
-                          Supabase Stored Records: <strong>{dbLiveStatus.creatorCount}</strong> | Master Catalog: <strong>1,042 Creators (2,062 Accounts)</strong>
+                          Supabase Stored Records: <strong>{dbLiveStatus.creatorCount}</strong> | Architecture: <strong>Live Platform APIs (Zero Fixed Catalogs)</strong>
                         </div>
                       )}
                     </div>
@@ -1001,24 +1062,80 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
           <div className="card provider-info-card section-spacer">
             <div className="card-head">
               <div>
-                <h2 className="card-title">API Environment Keys</h2>
-                <p className="card-caption">Configured in server-side environment</p>
+                <h2 className="card-title">API Environment Keys & Live Server Health</h2>
+                <p className="card-caption">Inspected from real server-side environment variables</p>
               </div>
               <KeyRound size={15} color="#46735a" />
             </div>
 
             <ul className="principle-list">
-              <li>
-                <code>YOUTUBE_DATA_API_KEY</code> — Active for live YouTube search & statistics.
+              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div>
+                  <code>YOUTUBE_DATA_API_KEY</code> — Active for live YouTube search & statistics.
+                </div>
+                <span
+                  className="status-pill"
+                  style={{
+                    backgroundColor: envStatus.YOUTUBE_DATA_API_KEY ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                    color: envStatus.YOUTUBE_DATA_API_KEY ? "#15803d" : "#b91c1c",
+                    border: `1px solid ${envStatus.YOUTUBE_DATA_API_KEY ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+                    whiteSpace: "nowrap",
+                    fontSize: 11,
+                  }}
+                >
+                  {envStatus.YOUTUBE_DATA_API_KEY ? "✓ Configured" : "✕ Not Set"}
+                </span>
               </li>
-              <li>
-                <code>TWITCH_CLIENT_ID</code> & <code>TWITCH_CLIENT_SECRET</code> — Twitch Helix API.
+              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div>
+                  <code>TWITCH_CLIENT_ID</code> & <code>TWITCH_CLIENT_SECRET</code> — Twitch Helix API.
+                </div>
+                <span
+                  className="status-pill"
+                  style={{
+                    backgroundColor: envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                    color: envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "#15803d" : "#b91c1c",
+                    border: `1px solid ${envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+                    whiteSpace: "nowrap",
+                    fontSize: 11,
+                  }}
+                >
+                  {envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "✓ Configured" : "✕ Not Set"}
+                </span>
               </li>
-              <li>
-                <code>KICK_CLIENT_ID</code> — Kick channel & livestream endpoint.
+              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div>
+                  <code>KICK_PUBLIC_API</code> — Kick channel & livestream endpoint (Public REST v2).
+                </div>
+                <span
+                  className="status-pill"
+                  style={{
+                    backgroundColor: "rgba(34, 197, 94, 0.15)",
+                    color: "#15803d",
+                    border: "1px solid rgba(34, 197, 94, 0.3)",
+                    whiteSpace: "nowrap",
+                    fontSize: 11,
+                  }}
+                >
+                  ✓ Public API Active
+                </span>
               </li>
-              <li>
-                <code>NEXT_PUBLIC_SUPABASE_URL</code> — Team workspace database.
+              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div>
+                  <code>NEXT_PUBLIC_SUPABASE_URL</code> — Team workspace database.
+                </div>
+                <span
+                  className="status-pill"
+                  style={{
+                    backgroundColor: envStatus.NEXT_PUBLIC_SUPABASE_URL ? "rgba(34, 197, 94, 0.15)" : "rgba(100, 116, 139, 0.15)",
+                    color: envStatus.NEXT_PUBLIC_SUPABASE_URL ? "#15803d" : "#475569",
+                    border: `1px solid ${envStatus.NEXT_PUBLIC_SUPABASE_URL ? "rgba(34, 197, 94, 0.3)" : "rgba(100, 116, 139, 0.3)"}`,
+                    whiteSpace: "nowrap",
+                    fontSize: 11,
+                  }}
+                >
+                  {envStatus.NEXT_PUBLIC_SUPABASE_URL ? "✓ Connected" : "Local Mode"}
+                </span>
               </li>
             </ul>
 
