@@ -123,7 +123,9 @@ export default function DiscoverPage() {
   // Live federated search state
   const [isSearching, setIsSearching] = useState(false);
   const [liveSearchResults, setLiveSearchResults] = useState<Creator[] | null>(null);
-  const [connectorStatuses, setConnectorStatuses] = useState<Record<string, { status: string; count: number; message?: string }>>({});
+  const [connectorStatuses, setConnectorStatuses] = useState<
+    Record<string, { status: string; itemCount?: number; count?: number; message?: string }>
+  >({});
   const [searchProvenance, setSearchProvenance] = useState<{ source: string; isLive: boolean } | null>(null);
   const [providerSummary, setProviderSummary] = useState<{
     succeeded: string[];
@@ -884,17 +886,24 @@ export default function DiscoverPage() {
               let text = `${plat}: ${stat.status}`;
 
               if (isSuccess) {
+                const resultCount = stat.itemCount ?? stat.count ?? 0;
                 bg = "rgba(34, 197, 94, 0.16)";
                 color = "#15803d";
-                text = `✓ ${plat}: ${stat.count ?? 0} results`;
+                text = `✓ ${plat}: ${resultCount} ${resultCount === 1 ? "result" : "results"}`;
               } else if (isUnconfigured) {
                 bg = "rgba(234, 179, 8, 0.14)";
                 color = "#854d0e";
                 text = `⚡ ${plat}: Unconfigured API Key`;
               } else if (isUnsupported) {
-                bg = "rgba(56, 189, 248, 0.14)";
-                color = "#0369a1";
-                text = `ℹ ${plat}: Handle Lookup Only`;
+                if (plat === "TikTok" || plat === "Instagram") {
+                  bg = "rgba(100, 116, 139, 0.14)";
+                  color = "#475569";
+                  text = `🔒 ${plat}: OAuth Required`;
+                } else {
+                  bg = "rgba(56, 189, 248, 0.14)";
+                  color = "#0369a1";
+                  text = `ℹ ${plat}: Handle Lookup Only`;
+                }
               } else if (isRateLimited) {
                 bg = "rgba(249, 115, 22, 0.14)";
                 color = "#c2410c";
