@@ -280,6 +280,16 @@ test("Federated Connectors Test Suite", async (t) => {
     assert.equal(shouldCharge, false, "Quota must NOT be charged when providers fail or return 0 live results");
   });
 
+  await t.test("11. Multi-word keyword query auto-skips handle-only Kick connector cleanly", async () => {
+    delete process.env.YOUTUBE_DATA_API_KEY;
+    delete process.env.TWITCH_CLIENT_ID;
+    delete process.env.TWITCH_CLIENT_SECRET;
+
+    const res = await federatedSearch("Gaming streamers", { bypassCache: true });
+    assert.equal(res.connectorStatuses.Kick.status, "unsupported_operation");
+    assert.match(res.connectorStatuses.Kick.message || "", /handle/i);
+  });
+
   // Restore env vars
   if (origYtKey) process.env.YOUTUBE_DATA_API_KEY = origYtKey;
   if (origTwitchId) process.env.TWITCH_CLIENT_ID = origTwitchId;

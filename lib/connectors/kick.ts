@@ -66,6 +66,20 @@ export async function lookupKick(
       };
     }
 
+    if (res.status === 403) {
+      return {
+        platform: "Kick",
+        status: "error",
+        message:
+          "Kick web endpoint declined the server request (HTTP 403 / Cloudflare protection). Official Kick OAuth 2.1 API credentials (api.kick.com) are recommended for production server IPs.",
+        items: [],
+        capabilities: kickCapabilities,
+        fetchedAt: now,
+        source: "Kick Channel API",
+        isLive: false,
+      };
+    }
+
     if (res.status === 429) {
       return {
         platform: "Kick",

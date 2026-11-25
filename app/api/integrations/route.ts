@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { INTEGRATIONS, type IntegrationHealthItem } from "@/lib/integrations";
+import { resolveServerSession } from "@/lib/auth/server-session";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const session = await resolveServerSession(request);
+
   const hasYouTube = Boolean(process.env.YOUTUBE_DATA_API_KEY && process.env.YOUTUBE_DATA_API_KEY.trim());
   const hasTwitchId = Boolean(process.env.TWITCH_CLIENT_ID?.trim());
   const hasTwitchSecret = Boolean(process.env.TWITCH_CLIENT_SECRET?.trim());
   const hasTwitch = hasTwitchId && hasTwitchSecret;
-  const hasKick = true; // Public API v2 channel endpoints active without authentication
+  const hasKick = true;
   const hasTikTokKey = Boolean(
     process.env.TIKTOK_CLIENT_KEY?.trim() && process.env.TIKTOK_CLIENT_SECRET?.trim(),
   );
@@ -27,48 +30,40 @@ export async function GET() {
     if (item.platform === "YouTube") {
       connected = hasYouTube;
       mode = hasYouTube ? "active_api" : "unconfigured";
-      connectorStatus = hasYouTube ? "Live API Connector Ready" : "Unconfigured (API Key Missing)";
+      connectorStatus = hasYouTube ? "Live Search Active" : "Service Pending";
       statusNote = hasYouTube
-        ? "Official Google Data API v3 active for keyword search & channel lookup"
-        : "Missing YOUTUBE_DATA_API_KEY on server — live YouTube discovery disabled";
+        ? "Live channel discovery & public statistics active"
+        : "YouTube live search is currently disabled (activation pending)";
       availableForPublicDiscovery = hasYouTube;
     } else if (item.platform === "Twitch") {
       connected = hasTwitch;
       mode = hasTwitch ? "active_api" : "unconfigured";
-      connectorStatus = hasTwitch ? "Live Helix API Ready" : "Unconfigured (Twitch Credentials Missing)";
+      connectorStatus = hasTwitch ? "Live Search Active" : "Service Pending";
       statusNote = hasTwitch
-        ? "Official Twitch Helix API active for channel search & live streams"
-        : "Missing TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET on server — live Twitch discovery disabled";
+        ? "Live channel discovery & viewer metrics active"
+        : "Twitch live search is currently disabled (activation pending)";
       availableForPublicDiscovery = hasTwitch;
     } else if (item.platform === "Kick") {
       connected = hasKick;
       mode = "active_api";
-      connectorStatus = "Direct Handle Lookup (Public API v2)";
-      statusNote = "Kick Public API v2 active for exact-handle lookup (no keyword discovery)";
+      connectorStatus = "Handle Lookup Active";
+      statusNote = "Exact @handle lookup active (single-word channels only)";
       supportsLiveDiscovery = false;
       supportsHandleLookup = true;
       availableForPublicDiscovery = false;
     } else if (item.platform === "TikTok") {
-      connected = false; // No creator user OAuth tokens linked in app flow yet
+      connected = false;
       mode = "requires_oauth";
-      connectorStatus = hasTikTokKey
-        ? "Creator OAuth Flow Needed (App Configured)"
-        : "Unavailable (Creator OAuth Required)";
-      statusNote = hasTikTokKey
-        ? "Client credentials detected, requires per-creator TikTok Login Kit OAuth authorization"
-        : "Unavailable — TIKTOK_CLIENT_KEY/SECRET not configured & requires creator OAuth";
+      connectorStatus = "OAuth Required";
+      statusNote = "Requires TikTok Creator OAuth";
       supportsLiveDiscovery = false;
       supportsHandleLookup = false;
       availableForPublicDiscovery = false;
     } else if (item.platform === "Instagram") {
-      connected = false; // No Meta Professional user OAuth tokens linked in app flow yet
+      connected = false;
       mode = "requires_oauth";
-      connectorStatus = hasMetaApp
-        ? "Professional OAuth Needed (App Configured)"
-        : "Unavailable (Meta OAuth Required)";
-      statusNote = hasMetaApp
-        ? "Meta App credentials detected, requires Instagram Professional user OAuth token"
-        : "Unavailable — META_APP_ID/SECRET not configured & requires Meta App Review";
+      connectorStatus = "OAuth Required";
+      statusNote = "Requires Meta Professional OAuth";
       supportsLiveDiscovery = false;
       supportsHandleLookup = false;
       availableForPublicDiscovery = false;
@@ -76,6 +71,8 @@ export async function GET() {
 
     return {
       ...item,
+      // Omit technical setup details for unauthenticated non-admin viewers if needed, keep marketer summary clean
+      apiSpec: session.isAdmin ? item.apiSpec : "",
       connected,
       mode,
       connectorStatus,
@@ -88,12 +85,17 @@ export async function GET() {
 
   const activeCount = integrations.filter((i) => i.connected).length;
 
-  return NextResponse.json({
+  // Never expose server environment variable names or DB topology to non-admin users
+  const payload: Record<string, unknown> = {
     status: "ok",
     activeCount,
     totalCount: integrations.length,
+    isAdmin: session.isAdmin,
     integrations,
-    envStatus: {
+  };
+
+  if (session.isAdmin) {
+    payload.envStatus = {
       YOUTUBE_DATA_API_KEY: hasYouTube,
       TWITCH_CLIENT_ID: hasTwitchId,
       TWITCH_CLIENT_SECRET: hasTwitchSecret,
@@ -101,12 +103,14 @@ export async function GET() {
       TIKTOK_CLIENT_KEY: hasTikTokKey,
       META_APP_ID: hasMetaApp,
       NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
-    },
-    database: {
+    };
+    payload.database = {
       configured: Boolean(
         process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       ),
       mode: process.env.NEXT_PUBLIC_SUPABASE_URL ? "supabase_cloud" : "local_workspace_persistence",
-    },
-  });
+    };
+  }
+
+  return NextResponse.json(payload);
 }

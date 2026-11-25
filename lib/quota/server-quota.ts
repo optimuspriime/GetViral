@@ -2,6 +2,7 @@ import "server-only";
 import type { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  GUEST_PREVIEW_QUOTA,
   SUBSCRIPTION_TIERS,
   getDefaultSubscription,
   type SubscriptionPlanId,
@@ -20,8 +21,19 @@ type CookieQuotaPayload = {
   p: SubscriptionPlanId;
   r: number;
   t: number;
+  g?: boolean;
   u: string;
 };
+
+function normalizeGuestSub(sub: UserSubscriptionState): UserSubscriptionState {
+  return {
+    planId: "free",
+    totalQuota: GUEST_PREVIEW_QUOTA,
+    searchesRemaining: Math.min(GUEST_PREVIEW_QUOTA, Math.max(0, sub.searchesRemaining)),
+    isGuestPreview: true,
+    updatedAt: sub.updatedAt || new Date().toISOString(),
+  };
+}
 
 function readSignedQuotaCookie(session: ServerSession): UserSubscriptionState | null {
   const raw = parseCookieValue(session.cookieHeader, QUOTA_COOKIE_NAME);
@@ -31,12 +43,14 @@ function readSignedQuotaCookie(session: ServerSession): UserSubscriptionState | 
     const parsed = JSON.parse(verified) as CookieQuotaPayload;
     if (parsed.k !== session.quotaKey) return null;
     if (typeof parsed.r !== "number" || typeof parsed.t !== "number") return null;
-    return {
+    const sub: UserSubscriptionState = {
       planId: parsed.p || "free",
       searchesRemaining: parsed.r,
       totalQuota: parsed.t,
+      isGuestPreview: session.isGuest,
       updatedAt: parsed.u || new Date().toISOString(),
     };
+    return session.isGuest ? normalizeGuestSub(sub) : sub;
   } catch {
     return null;
   }
@@ -52,6 +66,7 @@ export function attachQuotaCookie(
     p: subscription.planId,
     r: subscription.searchesRemaining,
     t: subscription.totalQuota,
+    g: session.isGuest,
     u: subscription.updatedAt,
   };
   response.cookies.set(QUOTA_COOKIE_NAME, signValue(JSON.stringify(payload)), {
@@ -64,16 +79,16 @@ export function attachQuotaCookie(
 }
 
 /**
- * Loads the authoritative subscription & search quota for this server session
- * from Supabase `public.user_subscriptions` (creating the initial 50/50 row on first access),
- * falling back to signed HTTPOnly cookie if DB is offline.
+ * Loads the authoritative subscription & search quota for this server session.
+ * Authenticated accounts receive 50/50 stored per user_id; Guests receive a 5-search server-enforced preview quota tied to IP/cookie.
  */
 export async function getServerQuota(session: ServerSession): Promise<UserSubscriptionState> {
   const supabase = getSupabaseAdmin();
   const cookieFallback = readSignedQuotaCookie(session);
+  const defaultState = getDefaultSubscription("free", session.isGuest);
 
   if (!supabase) {
-    return cookieFallback ?? getDefaultSubscription("free");
+    return cookieFallback ?? defaultState;
   }
 
   try {
@@ -84,21 +99,22 @@ export async function getServerQuota(session: ServerSession): Promise<UserSubscr
       .maybeSingle();
 
     if (!error && data) {
-      return {
+      const dbSub: UserSubscriptionState = {
         planId: (data.plan_id as SubscriptionPlanId) || "free",
-        searchesRemaining: Number(data.searches_remaining ?? 50),
-        totalQuota: Number(data.total_quota ?? 50),
+        searchesRemaining: Number(data.searches_remaining ?? defaultState.searchesRemaining),
+        totalQuota: Number(data.total_quota ?? defaultState.totalQuota),
+        isGuestPreview: session.isGuest,
         updatedAt: data.updated_at || new Date().toISOString(),
       };
+      return session.isGuest ? normalizeGuestSub(dbSub) : dbSub;
     }
 
-    // Create default row on first access for this account or guest key
-    const initial = cookieFallback ?? getDefaultSubscription("free");
+    const initial = cookieFallback ?? defaultState;
     await supabase.from("user_subscriptions").upsert(
       {
         user_id: session.quotaKey,
         plan_id: initial.planId,
-        searches_used: Math.max(0, (initial.totalQuota === -1 ? 0 : initial.totalQuota - initial.searchesRemaining)),
+        searches_used: Math.max(0, initial.totalQuota === -1 ? 0 : initial.totalQuota - initial.searchesRemaining),
         searches_remaining: initial.searchesRemaining,
         total_quota: initial.totalQuota,
         role: "viewer",
@@ -109,13 +125,10 @@ export async function getServerQuota(session: ServerSession): Promise<UserSubscr
 
     return initial;
   } catch {
-    return cookieFallback ?? getDefaultSubscription("free");
+    return cookieFallback ?? defaultState;
   }
 }
 
-/**
- * Verifies server-side quota BEFORE running external search calls.
- */
 export async function checkServerQuotaAvailable(session: ServerSession): Promise<{
   allowed: boolean;
   subscription: UserSubscriptionState;
@@ -130,9 +143,6 @@ export async function checkServerQuotaAvailable(session: ServerSession): Promise
   };
 }
 
-/**
- * Atomically decrements 1 search credit on the server ONLY when a search earned results and shouldCharge is true.
- */
 export async function consumeServerQuota(session: ServerSession): Promise<UserSubscriptionState> {
   const current = await getServerQuota(session);
   if (current.totalQuota === -1) {
@@ -156,9 +166,12 @@ export async function consumeServerQuota(session: ServerSession): Promise<UserSu
         .eq("user_id", session.quotaKey)
         .maybeSingle();
 
-      const dbRemaining = Number(row?.searches_remaining ?? current.searchesRemaining);
+      const rawRemaining = Number(row?.searches_remaining ?? current.searchesRemaining);
+      const effectiveRemaining = session.isGuest
+        ? Math.min(GUEST_PREVIEW_QUOTA, rawRemaining)
+        : rawRemaining;
       const dbUsed = Number(row?.searches_used ?? 0);
-      const updatedRemaining = Math.max(0, dbRemaining - 1);
+      const updatedRemaining = Math.max(0, effectiveRemaining - 1);
 
       await supabase
         .from("user_subscriptions")
@@ -168,7 +181,9 @@ export async function consumeServerQuota(session: ServerSession): Promise<UserSu
             plan_id: current.planId,
             searches_used: dbUsed + 1,
             searches_remaining: updatedRemaining,
-            total_quota: Number(row?.total_quota ?? current.totalQuota),
+            total_quota: session.isGuest
+              ? GUEST_PREVIEW_QUOTA
+              : Number(row?.total_quota ?? current.totalQuota),
             updated_at: now,
           },
           { onConflict: "user_id" },
@@ -176,16 +191,13 @@ export async function consumeServerQuota(session: ServerSession): Promise<UserSu
 
       nextSub.searchesRemaining = updatedRemaining;
     } catch {
-      // Signed HTTPOnly cookie still captures nextSub on response
+      // Signed HTTPOnly cookie captures updated state
     }
   }
 
   return nextSub;
 }
 
-/**
- * Updates subscription tier / role for an authenticated user account only.
- */
 export async function updateServerPlanOrRole(
   session: ServerSession,
   updates: { planId?: SubscriptionPlanId; role?: "viewer" | "creator" },
@@ -194,7 +206,6 @@ export async function updateServerPlanOrRole(
 
   const current = await getServerQuota(session);
   const now = new Date().toISOString();
-
   let nextSub = { ...current, updatedAt: now };
 
   if (updates.planId) {
@@ -204,6 +215,7 @@ export async function updateServerPlanOrRole(
         planId: tier.id,
         searchesRemaining: tier.searchQuota === -1 ? 999999 : tier.searchQuota,
         totalQuota: tier.searchQuota,
+        isGuestPreview: false,
         updatedAt: now,
       };
     }
@@ -218,12 +230,8 @@ export async function updateServerPlanOrRole(
       total_quota: nextSub.totalQuota,
       updated_at: now,
     };
-    if (updates.planId) {
-      upsertRow.searches_used = 0;
-    }
-    if (updates.role) {
-      upsertRow.role = updates.role;
-    }
+    if (updates.planId) upsertRow.searches_used = 0;
+    if (updates.role) upsertRow.role = updates.role;
     await supabase.from("user_subscriptions").upsert(upsertRow, { onConflict: "user_id" });
   }
 

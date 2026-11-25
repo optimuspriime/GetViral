@@ -1,5 +1,7 @@
 export type SubscriptionPlanId = "free" | "basic" | "premium" | "unlimited";
 
+export const GUEST_PREVIEW_QUOTA = 5;
+
 export interface SubscriptionTier {
   id: SubscriptionPlanId;
   name: string;
@@ -16,18 +18,18 @@ export interface SubscriptionTier {
 export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
   {
     id: "free",
-    name: "Free Trial",
+    name: "Free Account",
     priceMonthly: 0,
     priceAnnual: 0,
     currency: "$",
     searchQuota: 50,
-    description: "Start exploring verified creators with 50 complimentary searches.",
+    description: "Create a free account to unlock 50 monthly creator searches and private shortlists.",
     features: [
-      "50 verified creator searches per account",
-      "Live federated search across connected platform APIs",
-      "Multi-platform reach metrics (YouTube, Twitch, Kick)",
-      "Standard creator profile viewing",
-      "1 Campaign Shortlist (up to 10 creators)",
+      "50 verified creator searches per account / month",
+      "Real-time search across connected platforms",
+      "Private saved creators & shortlist folders",
+      "Multi-platform analytics profiles",
+      "CSV export & campaign notes CRM",
     ],
   },
   {
@@ -40,10 +42,10 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     description: "Ideal for growing marketing teams and scout agencies.",
     features: [
       "150 verified creator searches / month",
-      "Direct verified business contact emails",
-      "Unlimited campaign shortlists & tagging",
+      "Public business contact emails (when available)",
+      "Unlimited shortlist folders & tagging",
       "CSV export & campaign notes CRM",
-      "Weekly platform data refreshes",
+      "On-demand creator metric refreshes",
     ],
   },
   {
@@ -58,28 +60,27 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     description: "For active talent managers & high-volume brand campaigns.",
     features: [
       "300 verified creator searches / month",
-      "Direct business emails with copy & outreach tools",
-      "Average live viewer concurrency & engagement analytics",
-      "On-demand platform sync button (Live APIs)",
-      "Multi-platform comparison charts & audience geography",
-      "Priority customer & outreach support",
+      "Public contact emails with outreach tools",
+      "Concurrent live viewer & video analytics",
+      "Live metric refresh across saved creators",
+      "Comparison charts & historical snapshots",
+      "Priority email support",
     ],
   },
   {
     id: "unlimited",
-    name: "Most Premium (Unlimited)",
+    name: "Enterprise (Unlimited)",
     badge: "Enterprise",
     priceMonthly: 99,
     priceAnnual: 990,
     currency: "$",
     searchQuota: -1, // Unlimited
-    description: "Full unconstrained intelligence with infinite searches for enterprise agencies.",
+    description: "Full unconstrained intelligence with unlimited searches for agencies.",
     features: [
-      "Unlimited searches & query lookups (∞)",
-      "Unrestricted access to all 5 platforms",
-      "Custom creator onboarding & profile verification",
-      "Team workspace sharing & multi-seat collaboration",
-      "Full API access & historical snapshot exports",
+      "Unlimited searches & handle lookups (∞)",
+      "Support for all connected platform tiers",
+      "Team workspace collaboration",
+      "Full historical snapshot exports",
       "Dedicated account manager",
     ],
   },
@@ -89,37 +90,62 @@ export interface UserSubscriptionState {
   planId: SubscriptionPlanId;
   searchesRemaining: number;
   totalQuota: number; // -1 for unlimited
+  isGuestPreview?: boolean;
   updatedAt: string;
 }
 
 export type UserRole = "viewer" | "creator";
 
-const SUBSCRIPTION_STORAGE_PREFIX = "gv_subscription_v3";
+const SUBSCRIPTION_STORAGE_PREFIX = "gv_subscription_v4";
 const ROLE_STORAGE_PREFIX = "gv_user_role_v2";
 
-export function getDefaultSubscription(planId: SubscriptionPlanId = "free"): UserSubscriptionState {
+export function getDefaultSubscription(
+  planId: SubscriptionPlanId = "free",
+  isGuest = false,
+): UserSubscriptionState {
+  if (isGuest) {
+    return {
+      planId: "free",
+      searchesRemaining: GUEST_PREVIEW_QUOTA,
+      totalQuota: GUEST_PREVIEW_QUOTA,
+      isGuestPreview: true,
+      updatedAt: new Date().toISOString(),
+    };
+  }
   const tier = SUBSCRIPTION_TIERS.find((t) => t.id === planId) ?? SUBSCRIPTION_TIERS[0];
   return {
     planId: tier.id,
     searchesRemaining: tier.searchQuota === -1 ? 999999 : tier.searchQuota,
     totalQuota: tier.searchQuota,
+    isGuestPreview: false,
     updatedAt: new Date().toISOString(),
   };
 }
 
-export function loadUserSubscription(ownerId?: string | null): UserSubscriptionState {
-  if (typeof window === "undefined") return getDefaultSubscription("free");
+export function loadUserSubscription(
+  ownerId?: string | null,
+  isGuest = false,
+): UserSubscriptionState {
+  if (typeof window === "undefined") return getDefaultSubscription("free", isGuest);
   const scopedKey = `${SUBSCRIPTION_STORAGE_PREFIX}:${ownerId || "guest"}`;
   try {
     const raw = window.localStorage.getItem(scopedKey);
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as UserSubscriptionState;
       if (parsed && typeof parsed.searchesRemaining === "number") {
+        if (isGuest) {
+          return {
+            ...parsed,
+            totalQuota: GUEST_PREVIEW_QUOTA,
+            searchesRemaining: Math.min(GUEST_PREVIEW_QUOTA, Math.max(0, parsed.searchesRemaining)),
+            isGuestPreview: true,
+          };
+        }
         return parsed;
       }
     }
   } catch {}
-  return getDefaultSubscription("free");
+  return getDefaultSubscription("free", isGuest);
 }
 
 export function saveUserSubscription(subscription: UserSubscriptionState, ownerId?: string | null): void {

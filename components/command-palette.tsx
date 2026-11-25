@@ -10,7 +10,7 @@ import { getCountryFlag } from "@/lib/country-detector";
 
 export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
-  const { creators, deductSearch } = useProspects();
+  const { creators } = useProspects();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,15 +38,12 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
 
   const quickNav = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
-    { label: "Discover All Creators", href: "/discover", icon: Compass },
-    { label: "Saved Creators Shortlists", href: "/lists", icon: Bookmark },
-    { label: "Settings & API Integrations", href: "/settings", icon: Settings2 },
+    { label: "Discover Creators", href: "/discover", icon: Compass },
+    { label: "Saved Creators", href: "/lists", icon: Bookmark },
+    { label: "Account & Settings", href: "/settings", icon: Settings2 },
   ];
 
   function handleSelectCreator(id: string) {
-    if (query.trim()) {
-      deductSearch();
-    }
     onClose();
     router.push(`/creators/${id}`);
   }
@@ -70,16 +67,13 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
         setSelectedIndex((prev) => (prev - 1 + filteredCreators.length) % Math.max(1, filteredCreators.length));
       } else if (e.key === "Enter" && filteredCreators[selectedIndex]) {
         e.preventDefault();
-        if (query.trim()) {
-          deductSearch();
-        }
         onClose();
         router.push(`/creators/${filteredCreators[selectedIndex].id}`);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, selectedIndex, filteredCreators, onClose, router, query, deductSearch]);
+  }, [isOpen, selectedIndex, filteredCreators, onClose, router]);
 
   if (!isOpen) return null;
 

@@ -14,6 +14,7 @@ export async function GET(request: Request) {
   const response = NextResponse.json({
     authenticated: session.authenticated,
     isGuest: session.isGuest,
+    isAdmin: session.isAdmin,
     userId: session.userId,
     email: session.email,
     subscription,
@@ -40,12 +41,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
-  // Enforce server-side billing check: do not allow free self-upgrades above Free 50/50 quota without Stripe/billing
   if (body.planId && body.planId !== "free") {
     return NextResponse.json(
       {
         error:
-          "Paid plan upgrades require a connected billing provider (Stripe) before quota limits can be increased on the server.",
+          "Billing provider required: Connect Stripe billing before upgrading above your 50-search account quota.",
         billingRequired: true,
       },
       { status: 402 },

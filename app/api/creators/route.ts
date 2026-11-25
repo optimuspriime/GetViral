@@ -31,7 +31,7 @@ export async function GET(request: Request) {
           quotaExhausted: true,
           chargeSearch: false,
           subscription: quotaCheck.subscription,
-          source: "Live Federated Platform Connectors",
+          source: "Live Platform Discovery",
           isLive: false,
         },
         { status: 429 },
@@ -153,7 +153,7 @@ export async function GET(request: Request) {
       unsupportedProviders,
       chargeSearch,
       subscription: latestSubscription,
-      source: "Live Federated Platform Connectors",
+      source: "Live Platform Discovery",
       isLive: true,
     });
 

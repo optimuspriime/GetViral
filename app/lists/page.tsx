@@ -155,11 +155,11 @@ export default function ListsPage() {
       <div className="page-heading">
         <div>
           <div className="eyebrow">
-            <Sparkles size={12} className="inline-icon" /> PROSPECT CRM & SHORTLISTS
+            <Sparkles size={12} className="inline-icon" /> SAVED CREATORS &amp; SHORTLISTS
           </div>
-          <h1>Campaign Shortlists & Outreach CRM.</h1>
+          <h1>Saved Creators &amp; Campaign Lists.</h1>
           <p className="page-subtitle">
-            Organize prospective partners, track outreach status, and collaborate on creator campaigns.
+            Organize saved creators, track outreach status, and collaborate on campaign lists.
           </p>
         </div>
         <div className="page-heading-actions">

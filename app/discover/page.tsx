@@ -67,7 +67,7 @@ function getEmptyFilterGuidance(
     providerSummary.unconfigured.includes("Twitch");
 
   if (isBroadSearchUnconfigured) {
-    return 'Live keyword discovery across YouTube and Twitch requires server API credentials (YOUTUBE_DATA_API_KEY, TWITCH_CLIENT_ID / SECRET) in Settings. You can lookup creators by exact handle on Kick (public API v2) or use Direct Handle Lookup below.';
+    return 'Live keyword discovery across YouTube and Twitch is pending activation. Meanwhile, look up Kick creators directly by exact @handle (e.g. @adinross or @xqc) or use Direct Handle Lookup below.';
   }
 
   const suggestions: string[] = [];
@@ -706,11 +706,11 @@ export default function DiscoverPage() {
       <div className="page-heading">
         <div>
           <div className="eyebrow">
-            <Sparkles size={12} className="inline-icon" /> FEDERATED DISCOVERY WORKSPACE
+            <Sparkles size={12} className="inline-icon" /> LIVE CREATOR DISCOVERY
           </div>
-          <h1>Find creator partners across live platform APIs.</h1>
+          <h1>Find creators across live platforms.</h1>
           <p className="page-subtitle">
-            Query live APIs on demand across YouTube, Twitch, Kick, TikTok, and Instagram with verified origin timestamps and reach metrics.
+            Discover YouTube &amp; Twitch creators, look up Kick channels by @handle, and view live reach with verified timestamps.
           </p>
         </div>
         <div className="page-heading-actions">
@@ -718,7 +718,7 @@ export default function DiscoverPage() {
             className="button button-secondary sync-live-button"
             onClick={() => {
               if (isGuest) {
-                showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+                showToast("Sign in required: Guest preview sessions cannot refresh saved workspace metrics.", "error");
                 return;
               }
               void syncAllPlatforms();
@@ -726,14 +726,14 @@ export default function DiscoverPage() {
             disabled={isGuest || isSyncing}
             title={
               isGuest
-                ? "Sign in as workspace owner or admin to trigger platform sync"
-                : "Sync all platforms and refresh live metrics across connected APIs"
+                ? "Sign in to refresh saved creator metrics"
+                : "Refresh live metrics for your saved creators"
             }
             type="button"
             style={isGuest ? { opacity: 0.65, cursor: "not-allowed" } : undefined}
           >
             <RefreshCw size={14} className={isSyncing ? "spin-icon" : ""} />
-            <span>{isSyncing ? "Syncing APIs…" : "Sync Live Data"}</span>
+            <span>{isSyncing ? "Refreshing…" : "Refresh Saved"}</span>
           </button>
           <button
             className="button button-primary"
@@ -795,7 +795,7 @@ export default function DiscoverPage() {
             type="submit"
             className="search-submit-btn"
             disabled={isSearching}
-            title="Execute federated search across connected platform APIs"
+            title="Search creators across active platforms"
           >
             {isSearching ? <RefreshCw size={13} className="spin-icon" /> : <Search size={13} />}
             <span>{isSearching ? "Searching…" : "Search"}</span>
@@ -813,7 +813,9 @@ export default function DiscoverPage() {
             <span>
               {subscription.totalQuota === -1
                 ? "Unlimited"
-                : `${subscription.searchesRemaining} searches remaining`}
+                : isGuest
+                  ? `Guest Preview: ${subscription.searchesRemaining} / ${subscription.totalQuota}`
+                  : `${subscription.searchesRemaining} / ${subscription.totalQuota} searches`}
             </span>
           </button>
         </form>
@@ -864,7 +866,7 @@ export default function DiscoverPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
               <strong style={{ color: "#166534" }}>{searchProvenance.source}</strong>
-              <span style={{ color: "#4b6c51" }}>· Real-time platform API query</span>
+              <span style={{ color: "#4b6c51" }}>· Live platform lookup</span>
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: providerSummary?.chargeSearch ? "#15803d" : "#68836c" }}>
               {providerSummary?.chargeSearch ? "✓ 1 Search Quota Used" : "✓ Search Quota NOT Charged"}
@@ -893,16 +895,19 @@ export default function DiscoverPage() {
               } else if (isUnconfigured) {
                 bg = "rgba(234, 179, 8, 0.14)";
                 color = "#854d0e";
-                text = `⚡ ${plat}: Unconfigured API Key`;
+                text = `⚡ ${plat}: Service Pending`;
               } else if (isUnsupported) {
                 if (plat === "TikTok" || plat === "Instagram") {
                   bg = "rgba(100, 116, 139, 0.14)";
                   color = "#475569";
                   text = `🔒 ${plat}: OAuth Required`;
                 } else {
+                  const isMultiWord = /\s/.test(filters.query.trim());
                   bg = "rgba(56, 189, 248, 0.14)";
                   color = "#0369a1";
-                  text = `ℹ ${plat}: Handle Lookup Only`;
+                  text = isMultiWord
+                    ? `ℹ ${plat}: @handle only (skipped multi-word)`
+                    : `ℹ ${plat}: Handle Lookup Only`;
                 }
               } else if (isRateLimited) {
                 bg = "rgba(249, 115, 22, 0.14)";
@@ -1174,12 +1179,12 @@ export default function DiscoverPage() {
               <strong>{uniqueCreatorCount}</strong> unique {uniqueCreatorCount === 1 ? "creator" : "creators"} · <strong>{results.length}</strong> platform {results.length === 1 ? "account" : "accounts"}
               {liveSearchResults !== null && (
                 <span style={{ marginLeft: 6, color: "#166534", fontWeight: 600 }}>
-                  (Live Federated Results)
+                  (Live Search Results)
                 </span>
               )}
               {liveSearchResults === null && savedCreators.length > 0 && (
                 <span style={{ marginLeft: 6, color: "#547359" }}>
-                  (Saved Workspace Prospects)
+                  (Saved Creators)
                 </span>
               )}
               {totalPages > 1 && (
@@ -1193,7 +1198,7 @@ export default function DiscoverPage() {
                 className="icon-button sync-quick-btn"
                 onClick={() => {
                   if (isGuest) {
-                    showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+                    showToast("Sign in required: Guest preview sessions cannot refresh saved workspace metrics.", "error");
                     return;
                   }
                   void syncAllPlatforms();
@@ -1201,8 +1206,8 @@ export default function DiscoverPage() {
                 disabled={isGuest || isSyncing}
                 title={
                   isGuest
-                    ? "Sign in as workspace owner or admin to trigger platform sync"
-                    : "Sync live platform data across YouTube, Twitch, Kick, TikTok & Instagram"
+                    ? "Sign in to refresh saved creator metrics"
+                    : "Refresh live metrics for your saved creators"
                 }
                 type="button"
                 aria-label="Sync all platform data"
@@ -1230,10 +1235,10 @@ export default function DiscoverPage() {
               <div style={{ textAlign: "center", padding: "64px 20px" }}>
                 <RefreshCw size={28} className="spin-icon" style={{ color: "#22c55e", margin: "0 auto 16px" }} />
                 <h3 style={{ fontSize: 16, color: "#1d472b", marginBottom: 6 }}>
-                  Querying live platform connectors in parallel…
+                  Searching active platforms…
                 </h3>
                 <p style={{ color: "#547359", fontSize: 13, margin: 0 }}>
-                  Calling official YouTube Data API v3 and Twitch Helix endpoints. Deduplicating channel results.
+                  Checking live discovery connectors and deduplicating matching creator profiles.
                 </p>
               </div>
             ) : results.length ? (
@@ -1667,27 +1672,35 @@ export default function DiscoverPage() {
                   <UserRoundSearch size={24} />
                 </span>
                 <strong style={{ fontSize: 16, marginTop: 12 }}>
-                  {filters.query ? `No creators found for "${filters.query}"` : "Ready to Search Live Platform APIs"}
+                  {filters.query ? `No creators found for "${filters.query}"` : "Discover Creators Across Live Platforms"}
                 </strong>
                 <p style={{ maxWidth: 480, margin: "8px auto 20px" }}>
                   {filters.query
                     ? getEmptyFilterGuidance(filters, providerSummary)
-                    : "Enter any creator name, topic, or channel handle in the search bar above to query connected YouTube, Twitch, Kick, TikTok, and Instagram APIs in real-time."}
+                    : "Search YouTube & Twitch by keyword when active, look up Kick creators by exact @handle, or use Direct Handle Lookup below."}
                 </p>
 
-                {/* Quick suggestions */}
+                {/* Quick suggestions separated by Kick @handle vs Keyword */}
                 <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 20 }}>
-                  {["Gaming streamers", "Tech reviews", "CarryMinati", "MrBeast", "Kai Cenat"].map((term) => (
+                  {[
+                    { term: "@adinross", hint: "Kick @handle" },
+                    { term: "@xqc", hint: "Kick @handle" },
+                    { term: "Gaming streamers", hint: "Keyword" },
+                    { term: "Tech reviews", hint: "Keyword" },
+                    { term: "Kai Cenat", hint: "Keyword" },
+                  ].map((item) => (
                     <button
-                      key={term}
+                      key={item.term}
                       className="button button-secondary button-sm"
                       onClick={() => {
-                        setSearchInput(term);
-                        void executeSearch(term);
+                        setSearchInput(item.term);
+                        void executeSearch(item.term);
                       }}
                       type="button"
+                      title={item.hint}
                     >
-                      <Search size={12} /> {term}
+                      <Search size={12} /> {item.term}
+                      <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500 }}>· {item.hint}</span>
                     </button>
                   ))}
                 </div>
@@ -1741,7 +1754,7 @@ export default function DiscoverPage() {
 
             <form onSubmit={handleLiveLookup} className="import-modal-body">
               <p className="modal-desc">
-                Query official platform endpoints (YouTube Data API v3, Twitch Helix, Kick API v2) to lookup any channel directly by handle.
+                Look up any creator channel directly by exact @handle or username across active platform integrations.
               </p>
 
               <div className="import-form-row">
@@ -1753,11 +1766,11 @@ export default function DiscoverPage() {
                     value={importPlatform}
                     onChange={(e) => setImportPlatform(e.target.value as Platform)}
                   >
-                    <option value="YouTube">YouTube (Data API v3 — key required)</option>
-                    <option value="Twitch">Twitch (Helix API — key required)</option>
-                    <option value="Kick">Kick (Public API v2 — Active)</option>
-                    <option value="TikTok">TikTok (Unavailable — Creator OAuth Req.)</option>
-                    <option value="Instagram">Instagram (Unavailable — Meta OAuth Req.)</option>
+                    <option value="YouTube">YouTube (Channel Lookup — Service Pending)</option>
+                    <option value="Twitch">Twitch (Channel Lookup — Service Pending)</option>
+                    <option value="Kick">Kick (Exact @handle Lookup — Active)</option>
+                    <option value="TikTok">TikTok (Requires Creator OAuth)</option>
+                    <option value="Instagram">Instagram (Requires Meta Professional OAuth)</option>
                   </select>
                 </label>
 
@@ -1888,7 +1901,7 @@ export default function DiscoverPage() {
                     <Check size={14} />{" "}
                     {isGuest
                       ? `Sign In to Save ${importResult.name} to Workspace`
-                      : `Save ${importResult.name} to Workspace Prospects`}
+                      : `Save ${importResult.name} to Saved Creators`}
                   </button>
                 </div>
               )}

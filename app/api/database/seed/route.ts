@@ -8,41 +8,38 @@ import { refreshSavedCreatorsFromConnectors } from "@/lib/api-fetcher";
 import { resolveServerSession } from "@/lib/auth/server-session";
 
 export async function POST(request: Request) {
-  // Enforce verified server-side authentication
   const session = await resolveServerSession(request);
   if (!session.authenticated || !session.userId) {
     return NextResponse.json(
-      {
-        success: false,
-        message: "Unauthorized: Signed-in workspace account required to synchronize database.",
-      },
+      { success: false, message: "Unauthorized: Signed-in admin account required." },
       { status: 401 },
+    );
+  }
+  if (!session.isAdmin) {
+    return NextResponse.json(
+      { success: false, message: "Forbidden: Internal admin role required for database operations." },
+      { status: 403 },
     );
   }
 
   let body: { url?: string; key?: string } = {};
   try {
     body = await request.json();
-  } catch {
-    // Body is optional
-  }
+  } catch {}
 
   const override = body.url && body.key ? { url: body.url, key: body.key } : undefined;
   const dbStatus = await testSupabaseConnection(override);
 
   if (!dbStatus.connected) {
     return NextResponse.json(
-      { success: false, message: "Database is not connected. Configure NEXT_PUBLIC_SUPABASE_URL and Keys first." },
+      { success: false, message: "Database is not connected." },
       { status: 400 },
     );
   }
 
   if (!dbStatus.tableExists) {
     return NextResponse.json(
-      {
-        success: false,
-        message: "The 'creators' table does not exist. Please run the SQL schema script in your Supabase SQL Editor first.",
-      },
+      { success: false, message: "Required database tables have not been created yet." },
       { status: 400 },
     );
   }
@@ -52,7 +49,7 @@ export async function POST(request: Request) {
     if (userCreators.length === 0) {
       return NextResponse.json({
         success: true,
-        message: "Database connected! You have 0 saved creators in your workspace yet — save creators from Discover to sync their metrics.",
+        message: "Database connected! Save creators from Discover first to refresh their records.",
         inserted: 0,
         table: "public.creators",
       });
@@ -67,7 +64,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Synchronized ${liveInserted} saved workspace creator(s) with live platform APIs!`,
+      message: `Synchronized ${liveInserted} saved creator(s) with live platform APIs!`,
       inserted: liveInserted,
       table: "public.creators",
     });

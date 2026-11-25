@@ -75,3 +75,25 @@ export function createSignedGuestToken(guestId?: string): { guestId: string; sig
     signedToken: signValue(id),
   };
 }
+
+/**
+ * Computes a server-side deterministic guest rate-limit key from client IP headers
+ * so clearing cookies or opening incognito windows does not bypass the guest preview cap.
+ */
+export function hashClientIp(ip: string): string {
+  return createHmac("sha256", getSigningSecret()).update(`ip:${ip.trim()}`).digest("hex").slice(0, 24);
+}
+
+/**
+ * Checks whether an authenticated email is designated as an internal operator via ADMIN_EMAILS.
+ */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const raw = process.env.ADMIN_EMAILS?.trim();
+  if (!raw) return false;
+  const allowed = raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return allowed.includes(email.trim().toLowerCase());
+}

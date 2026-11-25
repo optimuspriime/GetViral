@@ -67,8 +67,10 @@ export function CookieBanner() {
         </div>
 
         <p className="cookie-banner-body">
-          We use cookies and browser storage to personalize your creator search experience,
-          persist your search quotas (e.g. 50 free searches), and securely store your campaign shortlists.
+          We use essential cookies and browser storage to maintain your session, enforce fair guest evaluation limits, and store saved creator lists for signed-in accounts. Read our{" "}
+          <a href="/privacy" style={{ textDecoration: "underline", color: "inherit", fontWeight: 600 }}>
+            Privacy Policy
+          </a>.
         </p>
 
         <div className="cookie-banner-actions">

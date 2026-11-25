@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BarChart3, CircleHelp, Users, Video, Radio, ChevronRight,
-  TrendingUp, Sparkles, CheckCircle2, X, Search, Globe, ShieldCheck
+  Bookmark, Sparkles, CheckCircle2, X, Search, Globe, ShieldCheck
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useProspects } from "@/components/data-provider";
@@ -20,11 +20,46 @@ import { getCountryFlag } from "@/lib/country-detector";
 
 type AccountWithCreator = { creator: Creator; account: PlatformAccount };
 
+// Read-only illustrative sample showcase for cold first-time visitors (isolated from CRM & search)
+const SAMPLE_PREVIEW_CARDS = [
+  {
+    name: "AdinRoss",
+    handle: "@adinross",
+    platform: "Kick" as const,
+    category: "Just Chatting",
+    country: "United States",
+    metricPrimary: "3.3M followers",
+    metricSecondary: "Live status & channel lookup",
+    provenance: "Kick Channel Lookup",
+  },
+  {
+    name: "Kai Cenat",
+    handle: "@kaicenat",
+    platform: "Twitch" as const,
+    category: "Entertainment",
+    country: "United States",
+    metricPrimary: "Live stream viewers",
+    metricSecondary: "Real-time broadcast stats",
+    provenance: "Twitch Live Search",
+  },
+  {
+    name: "CarryMinati",
+    handle: "@CarryMinati",
+    platform: "YouTube" as const,
+    category: "Entertainment",
+    country: "India",
+    metricPrimary: "Channel subscribers",
+    metricSecondary: "Avg. video views & contact URL",
+    provenance: "YouTube Channel Search",
+  },
+];
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { creators, lists, activeWorkspace, subscription } = useProspects();
+  const { creators, lists, activeWorkspace, subscription, isGuest } = useProspects();
   const [showExplainer, setShowExplainer] = useState(false);
   const [quickSearchInput, setQuickSearchInput] = useState("");
+  const [connectorsLoaded, setConnectorsLoaded] = useState(false);
   const [integrationsHealth, setIntegrationsHealth] = useState<IntegrationHealthItem[]>(() =>
     INTEGRATIONS.map((i) => ({
       ...i,
@@ -47,12 +82,20 @@ export default function DashboardPage() {
           setIntegrationsHealth(data.integrations);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setConnectorsLoaded(true));
   }, []);
 
   const activeConnectors = useMemo(
     () => integrationsHealth.filter((i) => i.connected),
     [integrationsHealth],
+  );
+
+  // Only count shortlists that actually hold creators or were explicitly created by the user
+  const activeShortlistCount = useMemo(
+    () =>
+      lists.filter((l) => l.creatorIds.length > 0 || l.id !== "list-default-shortlist").length,
+    [lists],
   );
 
   const platformData = useMemo(() => {
@@ -108,38 +151,62 @@ export default function DashboardPage() {
         </div>
         <div className="hero-copy">
           <div className="eyebrow">
-            <Sparkles size={12} className="inline-icon" /> FEDERATED CREATOR INTELLIGENCE · {activeWorkspace.name.toUpperCase()}
+            <Sparkles size={12} className="inline-icon" /> LIVE CREATOR DISCOVERY · {activeWorkspace.name.toUpperCase()}
           </div>
-          <h1>Discover, analyze, and partner with creators in real-time.</h1>
+          <h1>Find verified creators and manage campaign partnerships.</h1>
           <p className="page-subtitle">
-            Query live platform APIs across YouTube, Twitch, Kick, TikTok, and Instagram with verified metrics, origin timestamps, and prospect CRM shortlists.
+            Search YouTube &amp; Twitch live, look up Kick handles, and connect creator-authorized TikTok &amp; Instagram accounts — with transparent source timestamps and CRM lists.
           </p>
-          
-          {/* Quick Search Input */}
-          <form onSubmit={handleQuickSearch} className="hero-search-form" style={{ maxWidth: 640, margin: "20px 0 16px" }}>
+
+          {/* Primary Search CTA */}
+          <form onSubmit={handleQuickSearch} className="hero-search-form" style={{ maxWidth: 640, margin: "20px 0 14px" }}>
             <div className="search-field" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderRadius: 12 }}>
               <Search size={18} className="text-muted" />
               <input
                 className="hero-search-input"
                 style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15 }}
-                placeholder="Search live creators by name, topic, or channel handle..."
+                placeholder="Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
                 value={quickSearchInput}
                 onChange={(e) => setQuickSearchInput(e.target.value)}
               />
               <button type="submit" className="button button-primary button-sm" style={{ padding: "7px 18px" }}>
-                Search Live
+                Search Creators
               </button>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", fontSize: 12 }}>
-              <span style={{ color: "var(--muted, #68836c)", alignSelf: "center" }}>Popular queries:</span>
-              {["Gaming streamers", "Tech reviews", "CarryMinati", "MrBeast", "Kai Cenat"].map((term) => (
+
+            <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", fontSize: 12, alignItems: "center" }}>
+              <span style={{ color: "var(--muted, #68836c)" }}>Kick @handle:</span>
+              {["@adinross", "@xqc"].map((handle) => (
+                <button
+                  key={handle}
+                  type="button"
+                  onClick={() =>
+                    router.push(`/discover?platform=Kick&q=${encodeURIComponent(handle)}`)
+                  }
+                  style={{
+                    background: "rgba(255, 255, 255, 0.85)",
+                    border: "1px solid rgba(80, 140, 80, 0.28)",
+                    borderRadius: 16,
+                    padding: "3px 10px",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#15803d",
+                  }}
+                >
+                  {handle}
+                </button>
+              ))}
+
+              <span style={{ color: "var(--muted, #68836c)", marginLeft: 4 }}>Keyword (YT / Twitch):</span>
+              {["Gaming streamers", "Tech reviews", "Kai Cenat"].map((term) => (
                 <button
                   key={term}
                   type="button"
                   onClick={() => router.push(`/discover?q=${encodeURIComponent(term)}`)}
                   style={{
-                    background: "rgba(255, 255, 255, 0.7)",
-                    border: "1px solid rgba(80, 140, 80, 0.2)",
+                    background: "rgba(255, 255, 255, 0.65)",
+                    border: "1px solid rgba(80, 140, 80, 0.18)",
                     borderRadius: 16,
                     padding: "3px 10px",
                     cursor: "pointer",
@@ -154,84 +221,89 @@ export default function DashboardPage() {
           </form>
 
           <div className="hero-actions">
-            <Link href="/discover" className="button button-primary">
-              <Users size={15} /> Open Discovery
-            </Link>
             <Link href="/lists" className="button button-secondary">
-              <TrendingUp size={15} /> View Saved Prospects ({creators.length})
+              <Bookmark size={15} /> Saved Creators ({creators.length})
             </Link>
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => setShowExplainer(true)}
+            >
+              <CircleHelp size={15} /> Platform Capability Guide
+            </button>
+            {isGuest && (
+              <Link href="/auth" className="button button-secondary">
+                Create Free Account (50 Searches)
+              </Link>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Live Federated Engine Status Banner */}
-      <div className="system-status-banner">
-        <div className="status-pill-green">
-          <span className="banner-dot-green" />
-          <strong>Live Federated Search Engine Active</strong>
-        </div>
-        <span>
-          Real-time API queries execute at request time across official platform integrations. Results include provider source, fetched-at timestamps, and verified reach metrics.
-        </span>
-        <button
-          className="info-link-btn"
-          onClick={() => setShowExplainer(true)}
-          type="button"
-        >
-          <CircleHelp size={14} /> Capability Guide
-        </button>
-      </div>
-
-      {/* KPI Stat Grid: Reflects Real Workspace Data */}
+      {/* KPI Stat Grid (Consistent Saved Creators copy & non-duplicated subtitles) */}
       <div className="stat-grid">
         <div onClick={() => router.push("/lists")} className="stat-clickable" role="button" tabIndex={0}>
           <StatCard
             tone="violet"
-            label="Saved Prospects"
+            label="Saved Creators"
             value={creators.length}
-            note={creators.length === 1 ? "1 creator in your workspace CRM" : `${creators.length} creators saved to CRM`}
+            note="Creators saved to CRM"
             icon={<Users size={16} />}
           />
         </div>
         <div onClick={() => router.push("/lists")} className="stat-clickable" role="button" tabIndex={0}>
           <StatCard
             tone="teal"
-            label="Campaign Shortlists"
-            value={lists.length}
-            note={`${lists.length} active campaign list${lists.length === 1 ? "" : "s"}`}
+            label="Active Shortlists"
+            value={activeShortlistCount}
+            note="Shortlist folders with creators"
             icon={<BarChart3 size={16} />}
           />
         </div>
-        <div onClick={() => router.push("/settings")} className="stat-clickable" role="button" tabIndex={0}>
+        <div onClick={() => setShowExplainer(true)} className="stat-clickable" role="button" tabIndex={0}>
           <StatCard
             tone="coral"
-            label="Active Connectors"
-            value={activeConnectors.length}
-            note={`${activeConnectors.length} of ${integrationsHealth.length} active (${activeConnectors.map((i) => i.platform).join(", ") || "None"})`}
+            label="Live Platforms"
+            value={connectorsLoaded ? activeConnectors.length : 1}
+            note={
+              connectorsLoaded
+                ? `of ${integrationsHealth.length} active (${activeConnectors.map((i) => i.platform).join(", ") || "None"})`
+                : "Checking live platform availability"
+            }
             icon={<Globe size={16} />}
           />
         </div>
-        <div onClick={() => router.push("/settings")} className="stat-clickable" role="button" tabIndex={0}>
+        <div onClick={() => router.push(isGuest ? "/auth" : "/settings")} className="stat-clickable" role="button" tabIndex={0}>
           <StatCard
             tone="yellow"
             label="Searches Remaining"
             value={subscription.totalQuota === -1 ? 999999 : subscription.searchesRemaining}
-            note={subscription.totalQuota === -1 ? "Unlimited Plan active" : `${subscription.searchesRemaining} / ${subscription.totalQuota} monthly quota`}
+            note={
+              subscription.totalQuota === -1
+                ? "Unlimited enterprise plan"
+                : isGuest
+                ? `Guest preview limit (${subscription.totalQuota} max — sign in for 50)`
+                : `Monthly quota (${subscription.totalQuota} total)`
+            }
             icon={<Sparkles size={16} />}
           />
         </div>
       </div>
 
-      {/* Connected Platforms Capabilities Matrix */}
+      {/* Platform Availability Matrix (Zero Internal Server Jargon / Skeleton Until Loaded) */}
       <section className="card" style={{ marginBottom: 24, padding: "20px 24px" }}>
         <div className="card-head" style={{ marginBottom: 16 }}>
           <div>
-            <h2 className="card-title">Live Platform Connectors & Official Capabilities</h2>
-            <p className="card-caption">Transparent declarations of supported operations per official provider API</p>
+            <h2 className="card-title">Platform Discovery Capabilities</h2>
+            <p className="card-caption">Supported live lookup and creator authorization status per platform</p>
           </div>
-          <Link href="/settings" className="button button-secondary button-sm">
-            Manage Credentials <ChevronRight size={13} />
-          </Link>
+          <button
+            type="button"
+            onClick={() => setShowExplainer(true)}
+            className="button button-secondary button-sm"
+          >
+            Capability Guide <ChevronRight size={13} />
+          </button>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
@@ -259,31 +331,39 @@ export default function DashboardPage() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 8 }}>
                   <strong style={{ fontSize: 14, color: "#1d472b" }}>{integ.platform}</strong>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      padding: "2px 7px",
-                      borderRadius: 6,
-                      background: badgeBg,
-                      color: badgeColor,
-                    }}
-                  >
-                    {integ.connectorStatus}
-                  </span>
+                  {!connectorsLoaded ? (
+                    <span className="skeleton-pill" aria-label="Loading connector status" />
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "2px 7px",
+                        borderRadius: 6,
+                        background: badgeBg,
+                        color: badgeColor,
+                      }}
+                    >
+                      {integ.connectorStatus}
+                    </span>
+                  )}
                 </div>
                 <p style={{ fontSize: 11, color: "#547359", margin: "0 0 10px", lineHeight: 1.4 }}>
                   {integ.statusNote}
                 </p>
                 <div style={{ fontSize: 10, color: "#68836c" }}>
-                  {integ.connected && integ.supportsLiveDiscovery ? (
-                    <span style={{ color: "#166534" }}>✓ Live keyword discovery & handle lookup</span>
+                  {!connectorsLoaded ? (
+                    <span>Refreshing platform status…</span>
+                  ) : integ.connected && integ.supportsLiveDiscovery ? (
+                    <span style={{ color: "#166534" }}>✓ Live keyword search &amp; @handle lookup</span>
                   ) : integ.connected && integ.supportsHandleLookup ? (
-                    <span style={{ color: "#15803d" }}>✓ Exact-handle lookup active (Public API v2)</span>
+                    <span style={{ color: "#15803d" }}>✓ Exact @handle lookup active</span>
                   ) : integ.mode === "unconfigured" ? (
-                    <span style={{ color: "#92400e" }}>⚡ Configure server API key in Settings</span>
+                    <span style={{ color: "#92400e" }}>⚡ Keyword search service pending</span>
+                  ) : integ.platform === "TikTok" ? (
+                    <span style={{ color: "#475569" }}>🔒 Requires TikTok Creator OAuth</span>
                   ) : (
-                    <span style={{ color: "#475569" }}>🔒 Unavailable — requires creator/Meta OAuth</span>
+                    <span style={{ color: "#475569" }}>🔒 Requires Meta Professional OAuth</span>
                   )}
                 </div>
               </div>
@@ -292,15 +372,14 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* If prospects are saved, show portfolio charts; otherwise show discovery launchpad */}
+      {/* If saved creators exist, render workspace portfolio charts; otherwise show clearly labeled sample preview */}
       {creators.length > 0 ? (
         <>
-          {/* Primary Charts for Saved Prospects */}
           <div className="chart-grid">
             <section className="card">
               <div className="card-head">
                 <div>
-                  <h2 className="card-title">Saved Prospects by Platform</h2>
+                  <h2 className="card-title">Saved Creators by Platform</h2>
                   <p className="card-caption">Distribution across your shortlisted talent</p>
                 </div>
                 <span className="coverage-tag">
@@ -339,7 +418,7 @@ export default function DashboardPage() {
               <div className="card-head">
                 <div>
                   <h2 className="card-title">Audience Size Comparison</h2>
-                  <p className="card-caption">Verified followers/subscribers across shortlisted prospects</p>
+                  <p className="card-caption">Followers and subscribers across saved creators</p>
                 </div>
               </div>
               <ComparisonBarChart
@@ -349,22 +428,21 @@ export default function DashboardPage() {
               />
               <div className="chart-legend">
                 <span>
-                  <CheckCircle2 size={12} className="inline-icon text-green" /> Verified live API snapshots
+                  <CheckCircle2 size={12} className="inline-icon text-green" /> Platform API snapshots
                 </span>
                 <span suppressHydrationWarning>Updated {lastCollected ? formatDate(lastCollected) : "Recently"}</span>
               </div>
             </section>
           </div>
 
-          {/* Saved Prospects Directory */}
           <section className="card" style={{ marginTop: 24 }}>
             <div className="card-head">
               <div>
-                <h2 className="card-title">Saved Workspace Prospects</h2>
-                <p className="card-caption">Creators organized in your active shortlists</p>
+                <h2 className="card-title">Saved Creators</h2>
+                <p className="card-caption">Creators organized in your workspace</p>
               </div>
               <Link href="/lists" className="button button-secondary button-sm">
-                Open CRM Lists <ChevronRight size={13} />
+                Manage Saved Creators <ChevronRight size={13} />
               </Link>
             </div>
             <div className="table-wrap">
@@ -427,15 +505,15 @@ export default function DashboardPage() {
                         <td>
                           {account && currentFollowers(account) !== null
                             ? `${shortNumber(currentFollowers(account)!)} ${account.platform === "YouTube" ? "subs" : "followers"}`
-                            : "—"}
+                            : "Unavailable"}
                         </td>
                         <td>
                           {account && currentReach(account) !== null
                             ? `${shortNumber(currentReach(account)!)} ${reachMetricName(account) === "avg_live_viewers" ? "avg viewers" : "avg views"}`
-                            : "—"}
+                            : "Unavailable"}
                         </td>
                         <td>
-                          <span>{getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Global"}</span>
+                          <span>{getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Unavailable"}</span>
                         </td>
                         <td>
                           <Link
@@ -455,45 +533,91 @@ export default function DashboardPage() {
           </section>
         </>
       ) : (
-        /* Empty Portfolio State: Clear Call to Action for Live Discovery */
-        <section className="card" style={{ textAlign: "center", padding: "48px 24px", margin: "24px 0" }}>
-          <div style={{ maxWidth: 520, margin: "0 auto" }}>
-            <span
-              style={{
-                display: "inline-flex",
-                padding: 16,
-                borderRadius: "50%",
-                background: "rgba(56, 189, 248, 0.12)",
-                color: "#0284c7",
-                marginBottom: 16,
-              }}
-            >
-              <Search size={28} />
-            </span>
-            <h2 style={{ fontSize: 20, marginBottom: 8, color: "#1d472b" }}>No Saved Prospects Yet</h2>
-            <p style={{ color: "#547359", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Search creators live across connected platform APIs on Discover. Evaluate reach metrics, compare engagement, and bookmark creators to save them to your CRM shortlists.
-            </p>
-            <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
-              <Link href="/discover" className="button button-primary">
-                <Search size={15} /> Search Live Creators
-              </Link>
-              <Link href="/settings" className="button button-secondary">
-                <Globe size={15} /> API Settings & Keys
-              </Link>
+        /* Cold Visitor & Empty Workspace Sample Showcase (Clearly Labeled Demo Fixture) */
+        <section className="card" style={{ padding: "24px", margin: "24px 0" }}>
+          <div className="card-head" style={{ marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <h2 className="card-title">How Creator Intelligence Looks in GetViral</h2>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRadius: 6,
+                    background: "#fef3c7",
+                    color: "#92400e",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Sample Preview · Demo Fixture
+                </span>
+              </div>
+              <p className="card-caption">
+                Illustrative examples of creator analytics cards (0 saved in your workspace yet — search live creators or sign in to save your own)
+              </p>
             </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Link href="/discover?platform=Kick&q=%40adinross" className="button button-primary button-sm">
+                <Search size={13} /> Try Live Kick Lookup (@adinross)
+              </Link>
+              {isGuest && (
+                <Link href="/auth" className="button button-secondary button-sm">
+                  Sign In to Save Creators
+                </Link>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 }}>
+            {SAMPLE_PREVIEW_CARDS.map((card) => (
+              <div
+                key={card.handle}
+                style={{
+                  border: "1px dashed rgba(80, 140, 80, 0.28)",
+                  borderRadius: 12,
+                  padding: "14px 16px",
+                  background: "rgba(255, 255, 255, 0.65)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong style={{ fontSize: 14, color: "#1d472b", display: "block" }}>{card.name}</strong>
+                    <span style={{ fontSize: 11, color: "#68836c" }}>{card.handle} · {card.category}</span>
+                  </div>
+                  <span
+                    className={`platform-label platform-badge platform-${card.platform.toLowerCase()}`}
+                    style={{ fontSize: 10 }}
+                  >
+                    {card.platform}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "#285d38", fontWeight: 600 }}>
+                  {card.metricPrimary}
+                </div>
+                <div style={{ fontSize: 11, color: "#547359" }}>
+                  {card.metricSecondary} · {getCountryFlag(card.country)} {card.country}
+                </div>
+                <div style={{ fontSize: 10, color: "#78350f", marginTop: "auto", paddingTop: 6, borderTop: "1px solid rgba(80, 140, 80, 0.1)" }}>
+                  Sample Layout ({card.provenance})
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
 
-      {/* Explainer Modal */}
+      {/* Capability Guide Modal (Technical API specs housed cleanly here rather than marketer UI) */}
       {showExplainer && (
         <div className="modal-backdrop" onClick={() => setShowExplainer(false)}>
           <div className="explainer-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-wrap">
                 <CircleHelp size={20} className="modal-icon-green" />
-                <h3>Platform Capabilities & API Architecture</h3>
+                <h3>Platform Capabilities &amp; Technical Guide</h3>
               </div>
               <button
                 className="icon-button"
@@ -506,34 +630,34 @@ export default function DashboardPage() {
             <div className="modal-body">
               <div className="definition-card-item">
                 <div className="definition-head">
-                  <Globe size={16} /> <strong>Federated Query Execution</strong>
+                  <Globe size={16} /> <strong>Real-Time Queries &amp; Freshness</strong>
                 </div>
                 <p>
-                  Searches query platform connectors in parallel at runtime. We never rely on a fixed, hardcoded creator list. Responses are normalized with explicit source provenance and fetched-at timestamps.
+                  Queries execute at runtime against official provider endpoints without fixed mock catalogs. Every result carries a provider source label and fetched timestamp.
                 </p>
               </div>
               <div className="definition-card-item">
                 <div className="definition-head">
-                  <Radio size={16} /> <strong>YouTube & Twitch Live Discovery</strong>
+                  <Radio size={16} /> <strong>YouTube Data API v3 &amp; Twitch Helix</strong>
                 </div>
                 <p>
-                  Official Google Data API v3 and Twitch Helix API support keyword search and stream status discovery. Queries return live public subscriber and viewer metrics.
+                  Support keyword search and live channel metrics when platform services are enabled. Subject to YouTube API Services Terms and Twitch developer guidelines.
                 </p>
               </div>
               <div className="definition-card-item">
                 <div className="definition-head">
-                  <Video size={16} /> <strong>Kick Handle Resolution</strong>
+                  <Video size={16} /> <strong>Kick Exact-Handle Lookup</strong>
                 </div>
                 <p>
-                  Kick official endpoints resolve specific channel handles and report live stream status and viewer counts. Arbitrary global keyword discovery is not supported by Kick&apos;s API.
+                  Resolves single-word channel handles (e.g. <code>@adinross</code>, <code>@xqc</code>) with live stream status and follower counts. Multi-word keyword searches are automatically skipped on Kick.
                 </p>
               </div>
               <div className="definition-card-item">
                 <div className="definition-head">
-                  <ShieldCheck size={16} /> <strong>TikTok & Instagram Permissions</strong>
+                  <ShieldCheck size={16} /> <strong>TikTok &amp; Instagram OAuth Scope</strong>
                 </div>
                 <p>
-                  Official TikTok Display API and Meta Graph API require creator or professional account authorization. Public discovery does not crawl or scrape private profiles.
+                  TikTok Display API and Meta Instagram Graph API require creator or Professional account OAuth authorization. Unauthenticated consumer scraping is never used.
                 </p>
               </div>
             </div>
@@ -542,7 +666,7 @@ export default function DashboardPage() {
                 className="button button-primary"
                 onClick={() => setShowExplainer(false)}
               >
-                Understood
+                Got it
               </button>
             </div>
           </div>

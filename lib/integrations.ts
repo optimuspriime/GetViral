@@ -5,6 +5,7 @@ export type IntegrationInfo = {
   documentationUrl: string;
   setup: string;
   limitation: string;
+  apiSpec: string;
   connectorStatus: string;
   statusNote: string;
   supportsLiveDiscovery: boolean;
@@ -22,8 +23,9 @@ export interface IntegrationsHealthPayload {
   status: string;
   activeCount: number;
   totalCount: number;
+  isAdmin?: boolean;
   integrations: IntegrationHealthItem[];
-  envStatus: {
+  envStatus?: {
     YOUTUBE_DATA_API_KEY: boolean;
     TWITCH_CLIENT_ID: boolean;
     TWITCH_CLIENT_SECRET: boolean;
@@ -32,7 +34,7 @@ export interface IntegrationsHealthPayload {
     META_APP_ID: boolean;
     NEXT_PUBLIC_SUPABASE_URL: boolean;
   };
-  database: {
+  database?: {
     configured: boolean;
     mode: "supabase_cloud" | "local_workspace_persistence";
   };
@@ -42,40 +44,44 @@ export const INTEGRATIONS: IntegrationInfo[] = [
   {
     platform: "YouTube",
     documentationUrl: "https://developers.google.com/youtube/v3/docs",
-    setup: "Google Cloud project with YouTube Data API v3 enabled and YOUTUBE_DATA_API_KEY environment variable.",
-    limitation: "Official YouTube API supports live keyword discovery and channel statistics (subscribers, views). Subject to daily Google quota units.",
-    connectorStatus: "Checking server config…",
-    statusNote: "Official Google Data API v3",
+    setup: "Live channel keyword search and public subscriber & view metrics.",
+    limitation: "Subject to daily YouTube API Services quota limits.",
+    apiSpec: "YouTube Data API v3 (keyword search + channel statistics)",
+    connectorStatus: "Service Unavailable",
+    statusNote: "Channel keyword search & public statistics",
     supportsLiveDiscovery: true,
     supportsHandleLookup: true,
   },
   {
     platform: "Twitch",
     documentationUrl: "https://dev.twitch.tv/docs/api/reference/",
-    setup: "Twitch Developer Application with TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET environment variables.",
-    limitation: "Official Twitch Helix API supports live channel keyword search, stream status, and concurrent viewer metrics using App Access OAuth tokens.",
-    connectorStatus: "Checking server config…",
-    statusNote: "Official Twitch Helix API",
+    setup: "Live streamer discovery, category filtering, and concurrent viewer metrics.",
+    limitation: "Requires active Twitch Developer app credentials configured on the server.",
+    apiSpec: "Twitch Helix API (App Access OAuth + streams lookup)",
+    connectorStatus: "Service Unavailable",
+    statusNote: "Streamer keyword search & live viewer metrics",
     supportsLiveDiscovery: true,
     supportsHandleLookup: true,
   },
   {
     platform: "Kick",
     documentationUrl: "https://docs.kick.com/apis/",
-    setup: "Direct handle resolution via Kick Public API v2 channel endpoints.",
-    limitation: "Kick official endpoints support exact channel/handle lookup with real-time viewer and follower count. Broad keyword crawling is not supported by Kick's API.",
-    connectorStatus: "Direct Handle Lookup (Public API v2)",
-    statusNote: "Kick Public API v2 Active (Handle-Only)",
+    setup: "Direct lookup by exact single-word channel @handle with live viewer & follower counts.",
+    limitation: "Supports exact single-word @handle lookup only; multi-word keyword browsing is unsupported by Kick.",
+    apiSpec: "Kick Channel Endpoint (exact handle resolution; api.kick.com OAuth 2.1 for partner tier)",
+    connectorStatus: "Handle Lookup Active",
+    statusNote: "Exact @handle lookup (single-word channels)",
     supportsLiveDiscovery: false,
     supportsHandleLookup: true,
   },
   {
     platform: "TikTok",
     documentationUrl: "https://developers.tiktok.com/doc/display-api-overview/",
-    setup: "TikTok Developer Display API application with approved client credentials and creator user OAuth authorization.",
-    limitation: "Official TikTok Display API requires creator OAuth authorization. Arbitrary global keyword discovery and unauthenticated lookups are unavailable.",
-    connectorStatus: "Unavailable (Creator OAuth Required)",
-    statusNote: "Unavailable for public discovery — requires creator OAuth token",
+    setup: "Connect verified TikTok creator accounts with explicit creator permission.",
+    limitation: "Requires TikTok Creator OAuth authorization. Public keyword search across arbitrary accounts is not permitted.",
+    apiSpec: "TikTok Display API (Creator OAuth token required)",
+    connectorStatus: "Creator OAuth Required",
+    statusNote: "Requires TikTok Creator OAuth",
     supportsLiveDiscovery: false,
     supportsHandleLookup: false,
     requiresCreatorOAuth: true,
@@ -83,10 +89,11 @@ export const INTEGRATIONS: IntegrationInfo[] = [
   {
     platform: "Instagram",
     documentationUrl: "https://developers.facebook.com/documentation/instagram-platform/",
-    setup: "Meta Developer App with approved Meta App Review, Instagram Graph API permissions, and Professional Account User Token.",
-    limitation: "Official Meta Graph API supports authorized Instagram Professional Accounts only. Open scraping and unauthenticated public lookups are unavailable.",
-    connectorStatus: "Unavailable (Meta OAuth Required)",
-    statusNote: "Unavailable for public discovery — requires Meta Professional OAuth",
+    setup: "Connect authorized Instagram Professional accounts via Meta permissions.",
+    limitation: "Requires Meta App Review and an Instagram Professional account token. Open keyword search is prohibited.",
+    apiSpec: "Meta Instagram Graph API (Professional account token required)",
+    connectorStatus: "Meta OAuth Required",
+    statusNote: "Requires Meta Professional OAuth",
     supportsLiveDiscovery: false,
     supportsHandleLookup: false,
     requiresCreatorOAuth: true,

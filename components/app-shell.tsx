@@ -22,6 +22,29 @@ const navigation = [
   { label: "Settings", href: "/settings", icon: Settings2, tone: "lime" },
 ];
 
+function GlobalFooter() {
+  return (
+    <footer className="app-footer">
+      <div className="app-footer-links">
+        <span>© {new Date().getFullYear()} GetViral</span>
+        <Link href="/privacy">Privacy Policy</Link>
+        <Link href="/terms">Terms of Service</Link>
+        <Link href="/support">Support</Link>
+      </div>
+      <div className="app-footer-attribution">
+        By using YouTube features, you agree to the{" "}
+        <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">
+          YouTube Terms of Service
+        </a>{" "}
+        and{" "}
+        <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">
+          Google Privacy Policy
+        </a>.
+      </div>
+    </footer>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const {
@@ -47,11 +70,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isCreatingWs, setIsCreatingWs] = useState(false);
   const [newWsName, setNewWsName] = useState("");
+  const [shortcutLabel, setShortcutLabel] = useState("Ctrl K");
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
   const savedCount = new Set(lists.flatMap((list) => list.creatorIds)).size;
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined") {
+      const isApple = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+      setShortcutLabel(isApple ? "⌘ K" : "Ctrl K");
+    }
+  }, []);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -64,7 +95,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, []);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (workspaceRef.current && !workspaceRef.current.contains(event.target as Node)) {
@@ -103,15 +133,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (pathname.startsWith("/auth")) {
     return (
-      <main className="auth-main">
-        <Link href="/" className="auth-brand">
-          <BrandMark />
-          GetViral<span className="brand-period">.</span>
-        </Link>
-        {children}
-      </main>
+      <div className="auth-shell-wrap">
+        <main className="auth-main">
+          <Link href="/" className="auth-brand">
+            <BrandMark />
+            GetViral<span className="brand-period">.</span>
+          </Link>
+          {children}
+        </main>
+        <GlobalFooter />
+      </div>
     );
   }
+
+  const quotaTitle = isGuest
+    ? `Guest Preview (${subscription.searchesRemaining} of ${subscription.totalQuota} searches remaining). Sign in for 50 monthly searches.`
+    : `Current Plan: ${subscription.planId.toUpperCase()} (${
+        subscription.totalQuota === -1
+          ? "Unlimited"
+          : `${subscription.searchesRemaining} of ${subscription.totalQuota}`
+      } searches remaining). Click to view plans.`;
 
   return (
     <div className="app-frame">
@@ -181,29 +222,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="topbar-actions">
-          {/* Creator Profile Button (Role-based) */}
-          {userRole === "creator" && (
+          {/* Creator Profile Button (Role-based, authenticated only) */}
+          {!isGuest && userRole === "creator" && (
             <button
               type="button"
               className="topbar-creator-btn"
               onClick={() => setCreatorModalOpen(true)}
-              title="Publish or update your creator profile"
+              title="Manage your creator preferences"
             >
               <Sparkles size={13} />
               <span className="creator-btn-text">My Profile</span>
             </button>
           )}
 
-          {/* Search Quota Indicator & Upgrade Pill */}
+          {/* Search Quota Indicator & Plans Pill */}
           <button
             type="button"
             className="topbar-quota-pill"
             onClick={() => setPricingModalOpen(true)}
-            title={`Current Plan: ${subscription.planId.toUpperCase()} (${
-              subscription.totalQuota === -1
-                ? "Unlimited"
-                : `${subscription.searchesRemaining} of ${subscription.totalQuota}`
-            } searches remaining). Click to view plans & upgrade.`}
+            title={quotaTitle}
             aria-label="Subscription and search quota"
             suppressHydrationWarning
           >
@@ -213,15 +250,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ? "Unlimited"
                 : `${subscription.searchesRemaining} / ${subscription.totalQuota}`}
             </span>
-            <span className="quota-pill-badge">Plans</span>
+            <span className="quota-pill-badge">{isGuest ? "Preview" : "Plans"}</span>
           </button>
 
-          {/* Quick Platform Sync */}
+          {/* Refresh Saved Creators (Disabled for Guests) */}
           <button
             className="icon-button topbar-sync-btn"
             onClick={() => {
               if (isGuest) {
-                showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+                showToast("Sign in required to refresh saved creators.", "error");
                 return;
               }
               void syncAllPlatforms();
@@ -229,41 +266,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             disabled={isGuest || isSyncing}
             title={
               isGuest
-                ? "Sign in as workspace owner or admin to trigger live platform sync"
-                : "Sync and refresh data across YouTube, Twitch, Kick, TikTok & Instagram APIs"
+                ? "Sign in to refresh saved creator metrics"
+                : "Refresh saved creator metrics from connected platforms"
             }
             type="button"
-            aria-label="Sync all platform data"
-            style={isGuest ? { opacity: 0.65, cursor: "not-allowed" } : undefined}
+            aria-label="Refresh saved creators"
+            style={isGuest ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
           >
             <RefreshCw size={14} className={isSyncing ? "spin-icon text-green" : ""} />
           </button>
 
-          {/* Quick Search */}
+          {/* Quick Jump Command Palette */}
           <button
             className="top-search"
-            aria-label="Search creators"
+            aria-label="Quick search"
             onClick={() => setPaletteOpen(true)}
             type="button"
           >
             <Search size={15} />
-            <span className="top-search-label">Search creators</span>
-            <kbd>⌘ K</kbd>
+            <span className="top-search-label">Quick jump</span>
+            <kbd className="top-search-kbd" suppressHydrationWarning>{shortcutLabel}</kbd>
           </button>
 
-          {/* Sign In Button on Side for Guests */}
+          {/* Sign In Button for Guests */}
           {isGuest && (
             <Link
               href="/auth"
               className="topbar-signin-pill"
-              title="Sign In or Register to GetViral"
+              title="Sign In or Register for 50 free monthly searches"
             >
               <LogIn size={13} />
               <span>Sign In</span>
             </Link>
           )}
 
-          {/* Interactive Workspace Switcher */}
+          {/* Workspace Context Pill */}
           <div className="workspace-relative" ref={workspaceRef}>
             <button
               className="workspace-switch top-workspace-switch"
@@ -271,7 +308,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setWorkspaceOpen(!workspaceOpen)}
               type="button"
             >
-              <span className="workspace-avatar">{activeWorkspace.name.charAt(0)}</span>
+              <span className="workspace-avatar">{isGuest ? "G" : activeWorkspace.name.charAt(0).toUpperCase()}</span>
               <span className="workspace-copy">
                 <strong>{activeWorkspace.name}</strong>
                 <small>{activeWorkspace.role}</small>
@@ -282,8 +319,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {workspaceOpen && (
               <div className="workspace-dropdown-menu">
                 <div className="ws-dropdown-header">
-                  <strong>Workspaces</strong>
-                  <span>Switch or create workspace</span>
+                  <strong>{isGuest ? "Guest Preview" : "Workspaces"}</strong>
+                  <span>{isGuest ? "Sign in to create saved workspaces" : "Switch or create workspace"}</span>
                 </div>
                 <div className="ws-list">
                   {workspaces.map((ws) => (
@@ -294,6 +331,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         setActiveWorkspace(ws);
                         setWorkspaceOpen(false);
                       }}
+                      type="button"
                     >
                       <span className="ws-dot" />
                       <div className="ws-item-info">
@@ -305,59 +343,64 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   ))}
                 </div>
 
-                {isCreatingWs ? (
-                  <form onSubmit={handleCreateWorkspace} className="ws-create-form">
-                    <input
-                      autoFocus
-                      placeholder="Workspace name"
-                      value={newWsName}
-                      onChange={(e) => setNewWsName(e.target.value)}
-                      className="filter-input ws-input"
-                    />
-                    <div className="ws-create-actions">
-                      <button type="submit" className="button button-primary button-sm">
-                        Create
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary button-sm"
-                        onClick={() => setIsCreatingWs(false)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <button
-                    className="ws-create-btn"
-                    onClick={() => setIsCreatingWs(true)}
-                    type="button"
-                  >
-                    <Plus size={14} /> Create workspace
-                  </button>
+                {!isGuest && (
+                  isCreatingWs ? (
+                    <form onSubmit={handleCreateWorkspace} className="ws-create-form">
+                      <input
+                        autoFocus
+                        placeholder="Workspace name"
+                        value={newWsName}
+                        onChange={(e) => setNewWsName(e.target.value)}
+                        className="filter-input ws-input"
+                      />
+                      <div className="ws-create-actions">
+                        <button type="submit" className="button button-primary button-sm">
+                          Create
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary button-sm"
+                          onClick={() => setIsCreatingWs(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      className="ws-create-btn"
+                      onClick={() => setIsCreatingWs(true)}
+                      type="button"
+                    >
+                      <Plus size={14} /> Create workspace
+                    </button>
+                  )
                 )}
 
                 <div className="ws-dropdown-footer">
-                  <Link
-                    href="/settings"
-                    onClick={() => setWorkspaceOpen(false)}
-                    className="ws-settings-link"
-                  >
-                    Workspace settings <ArrowUpRight size={12} />
-                  </Link>
+                  {isGuest ? (
+                    <Link
+                      href="/auth"
+                      onClick={() => setWorkspaceOpen(false)}
+                      className="ws-settings-link"
+                    >
+                      Sign in for full workspace <ArrowUpRight size={12} />
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/settings"
+                      onClick={() => setWorkspaceOpen(false)}
+                      className="ws-settings-link"
+                    >
+                      Account settings <ArrowUpRight size={12} />
+                    </Link>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Live Platform Status Chip */}
-          <div className="live-status-chip" title="Real-time multi-platform data enabled">
-            <span className="status-live-pulse" />
-            <Sparkles size={11} className="chip-sparkle" />
-            <span>LIVE PLATFORMS</span>
-          </div>
-
-          {/* Interactive Account Menu */}
+          {/* Account Menu */}
           <div className="account-menu-relative" ref={accountRef}>
             <button
               className="top-avatar"
@@ -375,11 +418,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     {isGuest ? "G" : userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
                   </div>
                   <div className="account-info">
-                    <strong>{isGuest ? "Guest Explorer" : userEmail ? userEmail.split("@")[0] : "Workspace User"}</strong>
+                    <strong>{isGuest ? "Guest Explorer" : userEmail ? userEmail.split("@")[0] : "Account"}</strong>
                     <small>
                       {isGuest
-                        ? `Guest Sandbox (${subscription.searchesRemaining} / ${subscription.totalQuota} searches)`
-                        : userEmail || "Authenticated Workspace"}
+                        ? `Guest Preview (${subscription.searchesRemaining} / ${subscription.totalQuota} searches)`
+                        : userEmail || "Signed-in Account"}
                     </small>
                   </div>
                 </div>
@@ -391,7 +434,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="account-menu-item"
                   >
                     <Bookmark size={15} />
-                    <span>My Shortlists</span>
+                    <span>Saved Creators</span>
                     {savedCount > 0 && <span className="nav-count">{savedCount}</span>}
                   </Link>
                   <Link
@@ -408,7 +451,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="account-menu-item"
                   >
                     <Settings2 size={15} />
-                    <span>Settings & APIs</span>
+                    <span>Settings</span>
                   </Link>
 
                   <button
@@ -420,10 +463,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="account-menu-item"
                   >
                     <Zap size={15} className="text-amber" />
-                    <span>Plans & Search Quotas</span>
+                    <span>Plans &amp; Quotas</span>
                   </button>
 
-                  {userRole === "creator" && (
+                  {!isGuest && userRole === "creator" && (
                     <button
                       type="button"
                       onClick={() => {
@@ -433,7 +476,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       className="account-menu-item"
                     >
                       <Sparkles size={15} />
-                      <span>Edit / Claim Creator Profile</span>
+                      <span>My Creator Profile</span>
                     </button>
                   )}
                 </div>
@@ -472,6 +515,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <strong>{pageTitle(pathname)}</strong>
         </div>
         <div className="page-content">{children}</div>
+        <GlobalFooter />
       </main>
 
       {/* Command Palette Modal */}
@@ -480,7 +524,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Subscription Pricing Modal */}
       <PricingModal />
 
-      {/* Creator Profile Creation & Claiming Modal */}
+      {/* Creator Profile Creation Modal */}
       <CreatorProfileModal />
 
       {/* Cookie Consent Banner */}
@@ -492,7 +536,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function pageTitle(pathname: string) {
   if (pathname.startsWith("/discover")) return "Discover";
   if (pathname.startsWith("/creators")) return "Creator Profile";
-  if (pathname.startsWith("/lists")) return "Prospect CRM Shortlists";
-  if (pathname.startsWith("/settings")) return "Settings & Integrations";
-  return "Creator Intelligence Dashboard";
+  if (pathname.startsWith("/lists")) return "Saved Creators";
+  if (pathname.startsWith("/settings")) return "Settings";
+  if (pathname.startsWith("/privacy")) return "Privacy Policy";
+  if (pathname.startsWith("/terms")) return "Terms of Service";
+  if (pathname.startsWith("/support")) return "Support";
+  return "Dashboard";
 }

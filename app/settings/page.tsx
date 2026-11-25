@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   ArrowUpRight, Check, CircleHelp, Database, ExternalLink, KeyRound,
   RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle,
-  Zap, User, Copy
+  Zap, User, Copy, Lock
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Platform } from "@/lib/model";
@@ -16,6 +16,8 @@ export default function SettingsPage() {
   const {
     activeWorkspace,
     isGuest,
+    isAdmin,
+    userEmail: providerEmail,
     showToast,
     subscription,
     userRole,
@@ -23,13 +25,12 @@ export default function SettingsPage() {
     setPricingModalOpen,
     setCreatorModalOpen,
   } = useProspects();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authError, setAuthError] = useState("");
+
   const [testingPlatform, setTestingPlatform] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, { status: "success" | "error"; message: string }>>({});
 
   // Dynamic Server Integration Health State
+  const [connectorsLoaded, setConnectorsLoaded] = useState(false);
   const [integrationsStatus, setIntegrationsStatus] = useState<
     Array<{
       platform: Platform;
@@ -63,6 +64,7 @@ export default function SettingsPage() {
     })),
   );
 
+  // Admin-only diagnostic states (never rendered or populated for guests/non-admins)
   const [envStatus, setEnvStatus] = useState<{
     YOUTUBE_DATA_API_KEY?: boolean;
     TWITCH_CLIENT_ID?: boolean;
@@ -71,13 +73,12 @@ export default function SettingsPage() {
     TIKTOK_CLIENT_KEY?: boolean;
     META_APP_ID?: boolean;
     NEXT_PUBLIC_SUPABASE_URL?: boolean;
-  }>({});
-
-  // Supabase Configuration State
+  } | null>(null);
   const [supabaseUrl, setSupabaseUrl] = useState("");
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
   const [supabaseSaving, setSupabaseSaving] = useState(false);
   const [supabaseStatusMsg, setSupabaseStatusMsg] = useState("");
+  const [authError, setAuthError] = useState("");
   const [dbLiveStatus, setDbLiveStatus] = useState<{
     connected: boolean;
     tableExists: boolean;
@@ -88,259 +89,29 @@ export default function SettingsPage() {
   const [seedingDb, setSeedingDb] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlViewer, setShowSqlViewer] = useState(false);
-
-  // Test Console State
-  const [testConsolePlatform, setTestConsolePlatform] = useState("YouTube");
-  const [testConsoleHandle, setTestConsoleHandle] = useState("MrBeast");
+  const [testConsolePlatform, setTestConsolePlatform] = useState("Kick");
+  const [testConsoleHandle, setTestConsoleHandle] = useState("adinross");
   const [testConsoleLoading, setTestConsoleLoading] = useState(false);
   const [testConsoleOutput, setTestConsoleOutput] = useState<string | null>(null);
-
-  const [client, setClient] = useState(() => getSupabaseBrowserClient());
-  const authConfigured = Boolean(client);
 
   useEffect(() => {
     const cfg = getSupabaseConfig();
     setSupabaseUrl(cfg.url);
     setSupabaseAnonKey(cfg.key);
 
-    const c = getSupabaseBrowserClient();
-    setClient(c);
-
-    if (!c) {
-      setUserEmail(null);
-      setAuthLoading(false);
-    } else {
-      c.auth
-        .getUser()
-        .then(({ data, error }) => {
-          if (error) {
-            const isSessionMissing =
-              error.name === "AuthSessionMissingError" ||
-              error.message?.toLowerCase().includes("auth session missing") ||
-              error.message?.toLowerCase().includes("session not found") ||
-              (error as { status?: number }).status === 400;
-            if (isSessionMissing) {
-              setUserEmail(null);
-            } else {
-              console.warn("Supabase auth check notice:", error.message);
-              setAuthError(error.message);
-            }
-          } else {
-            setUserEmail(data.user?.email ?? null);
-          }
-          setAuthLoading(false);
-        })
-        .catch((error: unknown) => {
-          const msg = error instanceof Error ? error.message : String(error);
-          if (!msg.toLowerCase().includes("session missing")) {
-            console.warn("Supabase auth check notice:", msg);
-          }
-          setUserEmail(null);
-          setAuthLoading(false);
-        });
-    }
-
-    // Inspect live server integration health
     fetch("/api/integrations")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data.integrations)) {
           setIntegrationsStatus(data.integrations);
         }
-        if (data.envStatus) {
+        if (data.isAdmin && data.envStatus) {
           setEnvStatus(data.envStatus);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setConnectorsLoaded(true));
   }, []);
-
-  async function handleSaveSupabase(e: React.FormEvent) {
-    e.preventDefault();
-    if (isGuest) {
-      showToast("Sign in required: Guest preview sessions cannot modify database credentials.", "error");
-      return;
-    }
-    setSupabaseSaving(true);
-    setSupabaseStatusMsg("");
-    setAuthError("");
-
-    try {
-      saveSupabaseConfig(supabaseUrl, supabaseAnonKey);
-      const newClient = getSupabaseBrowserClient();
-      setClient(newClient);
-
-      if (newClient) {
-        const { error } = await newClient.auth.getSession();
-        if (error) {
-          setAuthError(`Supabase responded: ${error.message}`);
-        } else {
-          setSupabaseStatusMsg("Connected to Supabase Project successfully!");
-          showToast("Supabase configuration saved!", "success");
-        }
-      } else {
-        setSupabaseStatusMsg("Supabase credentials cleared. Using local workspace accounts.");
-        showToast("Using local workspace accounts", "info");
-      }
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Failed to connect to Supabase");
-    } finally {
-      setSupabaseSaving(false);
-    }
-  }
-
-  async function checkServerDbStatus() {
-    setCheckingDb(true);
-    try {
-      const res = await fetch("/api/database/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: supabaseUrl.trim(), key: supabaseAnonKey.trim() }),
-      });
-      const data = await res.json();
-      setDbLiveStatus(data);
-      if (data.connected && data.tableExists) {
-        showToast(`Database active: ${data.creatorCount} creators in Supabase`, "success");
-      } else if (data.connected && !data.tableExists) {
-        showToast("Connected! Creators table missing - run SQL schema below.", "info");
-      } else {
-        showToast(data.message || "Database not connected", "error");
-      }
-    } catch {
-      showToast("Could not check database status", "error");
-    } finally {
-      setCheckingDb(false);
-    }
-  }
-
-  async function triggerSeedDatabase() {
-    if (isGuest) {
-      showToast("Sign in required: Guest preview sessions cannot trigger database synchronization.", "error");
-      return;
-    }
-    setSeedingDb(true);
-    try {
-      const res = await fetch("/api/database/seed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: supabaseUrl.trim(),
-          key: supabaseAnonKey.trim(),
-          limit: 50,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast(data.message, "success");
-        await checkServerDbStatus();
-      } else {
-        showToast(data.message || "Seeding failed", "error");
-      }
-    } catch {
-      showToast("Seeding request failed", "error");
-    } finally {
-      setSeedingDb(false);
-    }
-  }
-
-  const SQL_SCHEMA_SNIPPET = `-- 1. Enable pgcrypto
-create extension if not exists pgcrypto;
-
--- 2. Creators Table
-create table if not exists public.creators (
-  id text primary key,
-  name text not null,
-  category text,
-  language text,
-  creator_country text,
-  creator_country_source text,
-  bio text,
-  avatar text,
-  business_contact_email text,
-  business_contact_source text,
-  business_contact_last_checked timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
--- 3. Platform Accounts
-create table if not exists public.creator_platform_accounts (
-  id text primary key,
-  creator_id text not null references public.creators(id) on delete cascade,
-  platform text not null,
-  handle text not null,
-  profile_url text not null,
-  activity text,
-  created_at timestamptz not null default now(),
-  unique (platform, handle)
-);
-
--- 4. Metric Snapshots
-create table if not exists public.metric_snapshots (
-  id text primary key,
-  account_id text not null references public.creator_platform_accounts(id) on delete cascade,
-  metric_name text not null,
-  value numeric,
-  unit text not null default 'count',
-  collected_at timestamptz not null default now(),
-  window_start timestamptz,
-  window_end timestamptz,
-  period_label text,
-  sample_size integer,
-  source text not null default 'Platform API',
-  status text not null default 'public',
-  created_at timestamptz not null default now()
-);
-
--- 5. Audience Regional Insights
-create table if not exists public.audience_insights (
-  id text primary key default gen_random_uuid()::text,
-  creator_id text not null references public.creators(id) on delete cascade,
-  dimension text not null,
-  value text not null,
-  amount numeric,
-  unit text default '%',
-  confidence numeric default 0.9,
-  source text default 'Platform Analytics',
-  status text default 'public',
-  collected_at timestamptz not null default now()
-);
-
--- 6. User Subscriptions
-create table if not exists public.user_subscriptions (
-  user_id text primary key,
-  plan_id text not null default 'free',
-  searches_used integer not null default 0,
-  searches_remaining integer not null default 50,
-  total_quota integer not null default 50,
-  role text not null default 'viewer',
-  updated_at timestamptz not null default now()
-);
-
--- Enable RLS & Public Access
-alter table public.creators enable row level security;
-alter table public.creator_platform_accounts enable row level security;
-alter table public.metric_snapshots enable row level security;
-alter table public.audience_insights enable row level security;
-alter table public.user_subscriptions enable row level security;
-
-create policy "Public read creators" on public.creators for select using (true);
-create policy "Public insert/update creators" on public.creators for all using (true) with check (true);
-create policy "Public read accounts" on public.creator_platform_accounts for select using (true);
-create policy "Public insert/update accounts" on public.creator_platform_accounts for all using (true) with check (true);
-create policy "Public read metric snapshots" on public.metric_snapshots for select using (true);
-create policy "Public insert metric snapshots" on public.metric_snapshots for all using (true) with check (true);
-create policy "Public read audience insights" on public.audience_insights for select using (true);
-create policy "Public insert audience insights" on public.audience_insights for all using (true) with check (true);
-create policy "Public subscriptions read/write" on public.user_subscriptions for all using (true) with check (true);`;
-
-  function copySqlToClipboard() {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(SQL_SCHEMA_SNIPPET);
-      setCopiedSql(true);
-      showToast("SQL Schema copied to clipboard!", "success");
-      setTimeout(() => setCopiedSql(false), 2500);
-    }
-  }
 
   async function signOut() {
     const c = getSupabaseBrowserClient();
@@ -351,12 +122,86 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
       window.localStorage.removeItem("mosaic_user_session");
       document.cookie = "mosaic_user_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     }
-    setUserEmail(null);
     showToast("Signed out successfully", "info");
     window.location.assign("/auth");
   }
 
+  async function handleSaveSupabase(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isAdmin) return;
+    setSupabaseSaving(true);
+    setSupabaseStatusMsg("");
+    setAuthError("");
+
+    try {
+      saveSupabaseConfig(supabaseUrl, supabaseAnonKey);
+      const newClient = getSupabaseBrowserClient();
+      if (newClient) {
+        const { error } = await newClient.auth.getSession();
+        if (error) {
+          setAuthError(`Supabase responded: ${error.message}`);
+        } else {
+          setSupabaseStatusMsg("Supabase client settings updated.");
+          showToast("Supabase configuration saved!", "success");
+        }
+      } else {
+        setSupabaseStatusMsg("Custom credentials cleared.");
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Failed to connect to Supabase");
+    } finally {
+      setSupabaseSaving(false);
+    }
+  }
+
+  async function checkServerDbStatus() {
+    if (!isAdmin) return;
+    setCheckingDb(true);
+    try {
+      const res = await fetch("/api/database/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: supabaseUrl.trim(), key: supabaseAnonKey.trim() }),
+      });
+      const data = await res.json();
+      setDbLiveStatus(data);
+      if (res.ok && data.connected && data.tableExists) {
+        showToast(`Database active: ${data.creatorCount} creators stored`, "success");
+      } else {
+        showToast(data.message || data.error || "Database check failed", "error");
+      }
+    } catch {
+      showToast("Could not check database status", "error");
+    } finally {
+      setCheckingDb(false);
+    }
+  }
+
+  async function triggerSeedDatabase() {
+    if (!isAdmin) return;
+    setSeedingDb(true);
+    try {
+      const res = await fetch("/api/database/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: supabaseUrl.trim(), key: supabaseAnonKey.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, "success");
+        await checkServerDbStatus();
+      } else {
+        showToast(data.message || "Refresh failed", "error");
+      }
+    } catch {
+      showToast("Refresh request failed", "error");
+    } finally {
+      setSeedingDb(false);
+    }
+  }
+
   async function testConnection(platform: string) {
+    if (!isAdmin) return;
     setTestingPlatform(platform);
     try {
       const handle =
@@ -378,27 +223,23 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
           ...prev,
           [platform]: {
             status: "success",
-            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? `${platform} API`}, freshness: ${data.dataFreshness ?? "Live API Response"})`,
+            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? `${platform} API`}, freshness: ${data.dataFreshness ?? "Live Response"})`,
           },
         }));
-        showToast(`${platform} API connection verified!`, "success");
+        showToast(`${platform} connection verified!`, "success");
       } else {
         setTestResult((prev) => ({
           ...prev,
           [platform]: {
             status: "error",
-            message: data.error || "Connection test failed",
+            message: data.error || "Connection check returned unavailable",
           },
         }));
-        showToast(`${platform} test encountered an issue`, "error");
       }
     } catch {
       setTestResult((prev) => ({
         ...prev,
-        [platform]: {
-          status: "error",
-          message: "Network request failed",
-        },
+        [platform]: { status: "error", message: "Network request failed" },
       }));
     } finally {
       setTestingPlatform(null);
@@ -407,7 +248,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
 
   async function runConsoleTest(e: React.FormEvent) {
     e.preventDefault();
-    if (!testConsoleHandle.trim()) return;
+    if (!isAdmin || !testConsoleHandle.trim()) return;
     setTestConsoleLoading(true);
     setTestConsoleOutput(null);
 
@@ -419,13 +260,26 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
       );
       const data = await res.json();
       setTestConsoleOutput(JSON.stringify(data, null, 2));
-      showToast("Live API query completed", "success");
+      showToast("Query completed", "success");
     } catch (err) {
       setTestConsoleOutput(
-        JSON.stringify({ error: err instanceof Error ? err.message : "Request failed" }, null, 2),
+        JSON.stringify({ error: err instanceof Error ? err.message : "Query failed" }, null, 2),
       );
     } finally {
       setTestConsoleLoading(false);
+    }
+  }
+
+  const SQL_SCHEMA_SNIPPET = `-- Run in Supabase SQL Editor
+create extension if not exists pgcrypto;
+-- Refer to supabase/schema.sql in repository for full table definitions.`;
+
+  function copySqlToClipboard() {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(SQL_SCHEMA_SNIPPET);
+      setCopiedSql(true);
+      showToast("SQL reference copied", "success");
+      setTimeout(() => setCopiedSql(false), 2500);
     }
   }
 
@@ -434,47 +288,80 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
       <div className="page-heading">
         <div>
           <div className="eyebrow">
-            <Sparkles size={12} className="inline-icon" /> WORKSPACE SETTINGS & CONNECTORS
+            <Sparkles size={12} className="inline-icon" /> ACCOUNT &amp; PREFERENCES
           </div>
-          <h1>Integrations, APIs & Credentials.</h1>
+          <h1>Account Settings &amp; Quotas.</h1>
           <p className="page-subtitle">
-            Manage live platform data sources, verify API connectivity, and configure enterprise team access.
+            Manage your workspace profile, view search quotas, and review platform availability.
           </p>
         </div>
       </div>
 
+      {isGuest && (
+        <div
+          className="notice-bar"
+          style={{
+            background: "#fffbeb",
+            borderColor: "#fef3c7",
+            color: "#92400e",
+            marginBottom: 18,
+            padding: "12px 16px",
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <Lock size={15} />
+            <span>
+              <strong>Guest Preview Mode (Read-Only):</strong> Sign in with an account to modify preferences, unlock 50 monthly searches, and save creators.
+            </span>
+          </span>
+          <Link href="/auth" className="button button-primary button-sm">
+            Sign In / Register <ArrowUpRight size={13} />
+          </Link>
+        </div>
+      )}
+
       <div className="settings-grid">
-        {/* Left Column: Platform Connectors */}
+        {/* Left Column: Marketer-Friendly Platform Availability Overview */}
         <section>
           <div className="card">
             <div className="card-head">
               <div>
-                <h2 className="card-title">Live Platform Connectors</h2>
+                <h2 className="card-title">Platform Availability</h2>
                 <p className="card-caption">
-                  Active platform connectors for real-time channel metadata and subscriber analytics
+                  Live discovery and handle lookup status across supported platforms
                 </p>
               </div>
-              <span
-                className="status-label"
-                style={{
-                  backgroundColor:
-                    integrationsStatus.filter((i) => i.connected).length > 1
-                      ? "rgba(34, 197, 94, 0.12)"
-                      : "rgba(234, 179, 8, 0.14)",
-                  color:
-                    integrationsStatus.filter((i) => i.connected).length > 1
-                      ? "#15803d"
-                      : "#92400e",
-                  border: `1px solid ${
-                    integrationsStatus.filter((i) => i.connected).length > 1
-                      ? "rgba(34, 197, 94, 0.3)"
-                      : "rgba(234, 179, 8, 0.3)"
-                  }`,
-                }}
-              >
-                <CheckCircle2 size={12} />{" "}
-                {integrationsStatus.filter((i) => i.connected).length} / {integrationsStatus.length} Connectors Active
-              </span>
+              {!connectorsLoaded ? (
+                <span className="skeleton-pill" />
+              ) : (
+                <span
+                  className="status-label"
+                  style={{
+                    backgroundColor:
+                      integrationsStatus.filter((i) => i.connected).length > 1
+                        ? "rgba(34, 197, 94, 0.12)"
+                        : "rgba(234, 179, 8, 0.14)",
+                    color:
+                      integrationsStatus.filter((i) => i.connected).length > 1
+                        ? "#15803d"
+                        : "#92400e",
+                    border: `1px solid ${
+                      integrationsStatus.filter((i) => i.connected).length > 1
+                        ? "rgba(34, 197, 94, 0.3)"
+                        : "rgba(234, 179, 8, 0.3)"
+                    }`,
+                  }}
+                >
+                  <CheckCircle2 size={12} />{" "}
+                  {integrationsStatus.filter((i) => i.connected).length} / {integrationsStatus.length} Active
+                </span>
+              )}
             </div>
 
             <div className="integration-list">
@@ -497,36 +384,40 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     <div className="integration-copy">
                       <div className="integration-title-line">
                         <strong>{integration.platform}</strong>
-                        <span
-                          className="live-verified-badge"
-                          style={{
-                            backgroundColor: integration.connected
-                              ? "rgba(34, 197, 94, 0.12)"
-                              : integration.mode === "requires_oauth"
-                              ? "rgba(100, 116, 139, 0.12)"
-                              : "rgba(234, 179, 8, 0.12)",
-                            color: integration.connected
-                              ? "#15803d"
-                              : integration.mode === "requires_oauth"
-                              ? "#475569"
-                              : "#b45309",
-                            border: `1px solid ${
-                              integration.connected
-                                ? "rgba(34, 197, 94, 0.3)"
+                        {!connectorsLoaded ? (
+                          <span className="skeleton-pill" />
+                        ) : (
+                          <span
+                            className="live-verified-badge"
+                            style={{
+                              backgroundColor: integration.connected
+                                ? "rgba(34, 197, 94, 0.12)"
                                 : integration.mode === "requires_oauth"
-                                ? "rgba(100, 116, 139, 0.3)"
-                                : "rgba(234, 179, 8, 0.3)"
-                            }`,
-                          }}
-                        >
-                          {integration.connected ? <Check size={11} /> : <AlertCircle size={11} />}{" "}
-                          {integration.connectorStatus}
-                        </span>
+                                ? "rgba(100, 116, 139, 0.12)"
+                                : "rgba(234, 179, 8, 0.12)",
+                              color: integration.connected
+                                ? "#15803d"
+                                : integration.mode === "requires_oauth"
+                                ? "#475569"
+                                : "#b45309",
+                              border: `1px solid ${
+                                integration.connected
+                                  ? "rgba(34, 197, 94, 0.3)"
+                                  : integration.mode === "requires_oauth"
+                                  ? "rgba(100, 116, 139, 0.3)"
+                                  : "rgba(234, 179, 8, 0.3)"
+                              }`,
+                            }}
+                          >
+                            {integration.connected ? <Check size={11} /> : <AlertCircle size={11} />}{" "}
+                            {integration.connectorStatus}
+                          </span>
+                        )}
                       </div>
                       <span>{integration.statusNote}</span>
-                      <p className="integration-limitation">{integration.setup} {integration.limitation}</p>
+                      <p className="integration-limitation">{integration.limitation}</p>
 
-                      {result && (
+                      {isAdmin && result && (
                         <div
                           className={`test-result-inline ${
                             result.status === "success" ? "text-green" : "text-coral"
@@ -543,27 +434,29 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     </div>
 
                     <div className="integration-actions">
-                      <button
-                        className="button button-secondary button-sm"
-                        onClick={() => testConnection(integration.platform)}
-                        disabled={isTesting}
-                        type="button"
-                      >
-                        {isTesting ? (
-                          <>
-                            <RefreshCw size={12} className="spin-icon" /> Testing…
-                          </>
-                        ) : (
-                          "Test Connection"
-                        )}
-                      </button>
+                      {isAdmin && (
+                        <button
+                          className="button button-secondary button-sm"
+                          onClick={() => testConnection(integration.platform)}
+                          disabled={isTesting}
+                          type="button"
+                        >
+                          {isTesting ? (
+                            <>
+                              <RefreshCw size={12} className="spin-icon" /> Testing…
+                            </>
+                          ) : (
+                            "Test Probe"
+                          )}
+                        </button>
+                      )}
                       <a
                         className="docs-link"
                         href={integration.documentationUrl}
                         target="_blank"
                         rel="noreferrer"
                         aria-label={`${integration.platform} official documentation`}
-                        title="Open official API documentation"
+                        title="Official platform documentation"
                       >
                         <ExternalLink size={13} />
                       </a>
@@ -574,76 +467,80 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
             </div>
           </div>
 
-          {/* Interactive Live API Test Console */}
-          <div className="card section-spacer">
-            <div className="card-head">
-              <div>
-                <h2 className="card-title">
-                  <Terminal size={14} className="inline-icon" /> Live API Query Sandbox
-                </h2>
-                <p className="card-caption">
-                  Execute live handle queries against server-configured connectors (Kick public API active; YouTube/Twitch require keys; TikTok/Instagram require OAuth)
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={runConsoleTest} className="test-console-form">
-              <div className="console-inputs-row">
-                <select
-                  className="filter-select console-select"
-                  aria-label="Platform to test"
-                  value={testConsolePlatform}
-                  onChange={(e) => setTestConsolePlatform(e.target.value)}
-                >
-                  <option value="YouTube">YouTube API</option>
-                  <option value="Twitch">Twitch Helix</option>
-                  <option value="Kick">Kick API</option>
-                  <option value="TikTok">TikTok Partner</option>
-                  <option value="Instagram">Instagram Pro</option>
-                </select>
-
-                <input
-                  className="filter-input console-input"
-                  placeholder="Handle (e.g. MrBeast, kaicenat, adinross)"
-                  value={testConsoleHandle}
-                  onChange={(e) => setTestConsoleHandle(e.target.value)}
-                  required
-                />
-
-                <button
-                  type="submit"
-                  className="button button-primary button-sm"
-                  disabled={testConsoleLoading || !testConsoleHandle.trim()}
-                >
-                  {testConsoleLoading ? (
-                    <>
-                      <RefreshCw size={12} className="spin-icon" /> Querying…
-                    </>
-                  ) : (
-                    "Execute Live Query"
-                  )}
-                </button>
-              </div>
-
-              {testConsoleOutput && (
-                <div className="console-output-wrap">
-                  <div className="console-output-label">API RESPONSE</div>
-                  <pre className="console-output-pre">{testConsoleOutput}</pre>
+          {/* Admin-Only Live API Query Sandbox */}
+          {isAdmin && (
+            <div className="card section-spacer">
+              <div className="card-head">
+                <div>
+                  <h2 className="card-title">
+                    <Terminal size={14} className="inline-icon" /> Admin API Probe Console
+                  </h2>
+                  <p className="card-caption">
+                    Internal operator diagnostic endpoint tester (ADMIN_EMAILS only)
+                  </p>
                 </div>
-              )}
-            </form>
-          </div>
+              </div>
+
+              <form onSubmit={runConsoleTest} className="test-console-form">
+                <div className="console-inputs-row">
+                  <select
+                    className="filter-select console-select"
+                    aria-label="Platform to test"
+                    value={testConsolePlatform}
+                    onChange={(e) => setTestConsolePlatform(e.target.value)}
+                  >
+                    <option value="YouTube">YouTube</option>
+                    <option value="Twitch">Twitch</option>
+                    <option value="Kick">Kick</option>
+                    <option value="TikTok">TikTok</option>
+                    <option value="Instagram">Instagram</option>
+                  </select>
+
+                  <input
+                    className="filter-input console-input"
+                    placeholder="Handle (e.g. adinross, MrBeast)"
+                    value={testConsoleHandle}
+                    onChange={(e) => setTestConsoleHandle(e.target.value)}
+                    required
+                  />
+
+                  <button
+                    type="submit"
+                    className="button button-primary button-sm"
+                    disabled={testConsoleLoading || !testConsoleHandle.trim()}
+                  >
+                    {testConsoleLoading ? (
+                      <>
+                        <RefreshCw size={12} className="spin-icon" /> Querying…
+                      </>
+                    ) : (
+                      "Run Probe"
+                    )}
+                  </button>
+                </div>
+
+                {testConsoleOutput && (
+                  <div className="console-output-wrap">
+                    <div className="console-output-label">API RESPONSE</div>
+                    <pre className="console-output-pre">{testConsoleOutput}</pre>
+                  </div>
+                )}
+              </form>
+            </div>
+          )}
 
           <div className="notice-bar section-spacer">
             <CircleHelp size={14} />
             <span>
-              <strong>Real-Time Data Principles:</strong> GetViral retrieves verified reach, public email
-              channels, and platform subscriber statistics through official developer APIs.
+              <strong>Transparent Attribution:</strong> GetViral retrieves channel reach and public business emails strictly from official platform endpoints with origin timestamps, and complies with{" "}
+              <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
+                YouTube Terms of Service
+              </a>.
             </span>
           </div>
         </section>
 
-        {/* Right Column: Subscription, Role & Authentication */}
+        {/* Right Column: Subscription Quota, Account Role, Authentication & Legal */}
         <section>
           {/* Subscription & Search Quota Card */}
           <div className="card settings-sub-card">
@@ -651,10 +548,10 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
               <div>
                 <h2 className="card-title">
                   <Zap size={14} className="text-amber" style={{ verticalAlign: "-2px", marginRight: 6 }} />
-                  Subscription & Search Quotas
+                  Search Quota &amp; Plan
                 </h2>
                 <p className="card-caption">
-                  Active Tier: <strong>{subscription.planId.toUpperCase()}</strong>
+                  Current Tier: <strong>{isGuest ? "GUEST PREVIEW" : subscription.planId.toUpperCase()}</strong>
                 </p>
               </div>
               <button
@@ -662,7 +559,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                 className="button button-primary button-sm"
                 onClick={() => setPricingModalOpen(true)}
               >
-                Change Plan / Upgrade
+                View Plans
               </button>
             </div>
 
@@ -671,7 +568,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                 <span>Searches Remaining</span>
                 <strong>
                   {subscription.totalQuota === -1
-                    ? "Unlimited (Enterprise)"
+                    ? "Unlimited"
                     : `${subscription.searchesRemaining} of ${subscription.totalQuota}`}
                 </strong>
               </div>
@@ -681,10 +578,10 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                     className="progress-fill"
                     style={{
                       width: `${Math.max(
-                        5,
+                        4,
                         Math.min(
                           100,
-                          Math.round((subscription.searchesRemaining / subscription.totalQuota) * 100),
+                          Math.round((subscription.searchesRemaining / Math.max(1, subscription.totalQuota)) * 100),
                         ),
                       )}%`,
                     }}
@@ -692,83 +589,75 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                 </div>
               )}
               <p className="quota-note">
-                {subscription.totalQuota === -1
-                  ? "Your account enjoys unrestricted searches across all 5 platforms."
-                  : `Tier search allowances: Free (50), Basic (150), Premium (300), Most Premium (Unlimited).`}
+                {isGuest
+                  ? "Guest preview allows 5 server-enforced searches. Create a free account to unlock 50 monthly searches."
+                  : "Account quotas are enforced server-side. Failed or unconfigured searches never consume quota."}
               </p>
             </div>
           </div>
 
-          {/* Role & Creator Studio Card */}
+          {/* Role Mode Card (Gated for Guests) */}
           <div className="card section-spacer">
             <div className="card-head">
               <div>
                 <h2 className="card-title">
                   <User size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-                  Account Role & Permissions
+                  Workspace Mode
                 </h2>
                 <p className="card-caption">
-                  Current Role: <strong>{userRole === "creator" ? "Creator / Talent" : "Brand / Marketer"}</strong>
+                  Current Mode: <strong>{isGuest ? "Guest Preview (Read-Only)" : userRole === "creator" ? "Creator / Talent" : "Brand / Marketer"}</strong>
                 </p>
               </div>
-              {userRole === "creator" && (
+              {!isGuest && userRole === "creator" && (
                 <button
                   type="button"
                   className="button button-primary button-sm"
                   onClick={() => setCreatorModalOpen(true)}
                 >
                   <Sparkles size={13} />
-                  <span>Launch Creator Studio</span>
+                  <span>My Profile</span>
                 </button>
               )}
             </div>
 
             <div className="role-switch-box">
               <p className="role-explainer">
-                Switch your operational mode to unlock creator self-publishing or agency discovery workflows.
+                Choose whether you primarily scout creators for campaigns or manage creator insights.
               </p>
 
               <div className="role-pills-row">
                 <button
                   type="button"
                   className={`role-pill ${userRole === "viewer" ? "active" : ""}`}
+                  disabled={isGuest}
+                  title={isGuest ? "Sign in to change workspace mode" : undefined}
                   onClick={() => setUserRole("viewer")}
                 >
                   <User size={13} />
-                  <span>Brand / Marketer (Scout Mode)</span>
+                  <span>Brand / Marketer</span>
                 </button>
 
                 <button
                   type="button"
                   className={`role-pill ${userRole === "creator" ? "active" : ""}`}
+                  disabled={isGuest}
+                  title={isGuest ? "Sign in to change workspace mode" : undefined}
                   onClick={() => setUserRole("creator")}
                 >
                   <Sparkles size={13} />
-                  <span>Creator / Talent (Self-Publish Mode)</span>
+                  <span>Creator / Talent</span>
                 </button>
               </div>
-
-              {userRole === "creator" && (
-                <div className="creator-role-banner">
-                  <Sparkles size={14} className="text-green" />
-                  <div>
-                    <strong>Creator Workspace Mode Enabled</strong>
-                    <p>
-                      Manage your verified channel lookup preferences and track how brands discover your live platform metrics.
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Authentication & Storage Card */}
+          {/* Account Authentication & Isolation Card */}
           <div className="card settings-auth-card section-spacer">
             <div className="card-head">
               <div>
                 <h2 className="card-title">
-                  <Database size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-                  Authentication & Storage
+                  <ShieldCheck size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                  Account &amp; Security
                 </h2>
                 <p className="card-caption">
                   Workspace: <strong>{activeWorkspace.name}</strong> ({activeWorkspace.role})
@@ -778,437 +667,125 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
             </div>
 
             <div className="settings-note">
-              <div className="storage-mode-banner">
-                <CheckCircle2 size={15} className="text-green" />
-                <div>
-                  <strong>Enterprise Workspace Persistence Active</strong>
-                  <p>
-                    Shortlists, tags, notes, and creator catalogues are synchronized and saved with
-                    workspace isolation.
-                  </p>
-                </div>
-              </div>
-
-              {authConfigured ? (
-                authLoading ? (
-                  <p>Checking active Supabase session…</p>
-                ) : userEmail ? (
-                  <div className="user-session-box">
-                    <p>
-                      Signed in as <strong>{userEmail}</strong>
-                    </p>
-                    <p className="session-help">
-                      Row-level security policies guard workspace records.
-                    </p>
-                    <button className="button button-secondary button-sm" onClick={signOut} type="button">
-                      Sign Out
-                    </button>
-                  </div>
-                ) : (
-                  <div className="user-session-box">
-                    <p>Supabase connection ready. Sign in to sync across team members.</p>
-                    <Link href="/auth" className="button button-primary button-sm">
-                      Sign In to Workspace
-                    </Link>
-                  </div>
-                )
-              ) : (
+              {!isGuest && providerEmail ? (
                 <div className="user-session-box">
                   <p>
-                    <strong>Workspace accounts are active.</strong> Local CRM persistence is enabled.
-                    To sync across team devices, configure your Supabase project credentials below.
+                    Signed in as <strong>{providerEmail}</strong>
                   </p>
-                  <Link href="/auth" className="button button-secondary button-sm">
-                    Open Account Sign In <ArrowUpRight size={12} />
+                  <p className="session-help">
+                    Saved creators, shortlist folders, notes, and monthly quotas are isolated strictly to your account.
+                  </p>
+                  <button className="button button-secondary button-sm" onClick={signOut} type="button">
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <div className="user-session-box">
+                  <p>You are browsing as a guest. Sign in or create a free account to save creators and unlock 50 monthly searches.</p>
+                  <Link href="/auth" className="button button-primary button-sm">
+                    Sign In / Create Account
                   </Link>
                 </div>
               )}
 
-              {/* Supabase In-App Configuration */}
-              <div className="settings-supabase-config">
-                <form onSubmit={handleSaveSupabase} className="settings-sb-form">
-                  <div className="sb-config-header">
-                    <strong>
-                      <Database size={13} className="text-green inline-icon" />
-                      Configure Supabase Cloud Credentials
-                    </strong>
-                    <span className={`status-pill ${authConfigured ? "status-connected" : "status-local"}`}>
-                      {authConfigured ? "Cloud Active" : "Local Mode"}
-                    </span>
+              <div className="settings-doc-link" style={{ marginTop: 14 }}>
+                <Link href="/privacy">Privacy Policy</Link>
+                <Link href="/terms">Terms of Service</Link>
+                <Link href="/support">Support</Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Admin-Only Infrastructure Controls (Strictly Hidden from Guests and Regular Users) */}
+          {isAdmin && (
+            <>
+              <div className="card section-spacer">
+                <div className="card-head">
+                  <div>
+                    <h2 className="card-title">
+                      <Database size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                      Admin Database Controls
+                    </h2>
+                    <p className="card-caption">Visible to internal ADMIN_EMAILS accounts only</p>
                   </div>
+                </div>
 
-                  {isGuest && (
-                    <div
-                      className="notice-bar"
-                      style={{
-                        background: "rgba(234, 179, 8, 0.1)",
-                        borderColor: "rgba(234, 179, 8, 0.3)",
-                        color: "#854d0e",
-                        marginBottom: 14,
-                        padding: "8px 12px",
-                        fontSize: 12,
-                        borderRadius: 8,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <AlertCircle size={15} />
-                      <span>
-                        <strong>Guest Sandbox Mode (Read-Only):</strong> Connecting custom Supabase cloud databases and triggering data synchronization requires signing in as a workspace owner or admin.
-                      </span>
-                    </div>
-                  )}
-
+                <form onSubmit={handleSaveSupabase} className="settings-sb-form">
                   <div className="sb-form-group">
-                    <label className="form-label" htmlFor="settings-sb-url">
-                      Supabase Project URL
-                    </label>
+                    <label className="form-label" htmlFor="settings-sb-url">Supabase Project URL</label>
                     <input
                       id="settings-sb-url"
                       type="url"
                       className="form-input"
-                      placeholder="https://xyzcompany.supabase.co"
                       value={supabaseUrl}
                       onChange={(e) => setSupabaseUrl(e.target.value)}
-                      disabled={isGuest}
                     />
                   </div>
-
                   <div className="sb-form-group">
-                    <label className="form-label" htmlFor="settings-sb-key">
-                      Supabase Anon / Public API Key
-                    </label>
+                    <label className="form-label" htmlFor="settings-sb-key">Supabase Anon Key</label>
                     <input
                       id="settings-sb-key"
                       type="password"
                       className="form-input"
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                       value={supabaseAnonKey}
                       onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                      disabled={isGuest}
                     />
                   </div>
+                  {supabaseStatusMsg && <div className="test-result-inline text-green">{supabaseStatusMsg}</div>}
+                  {authError && <div className="test-result-inline text-coral">{authError}</div>}
 
-                  {supabaseStatusMsg && (
-                    <div className="test-result-inline text-green">
-                      <CheckCircle2 size={13} />
-                      <span>{supabaseStatusMsg}</span>
-                    </div>
-                  )}
-
-                  {authError && (
-                    <div className="test-result-inline text-coral">
-                      <AlertCircle size={13} />
-                      <span>{authError}</span>
-                    </div>
-                  )}
-
-                  <div className="sb-actions-row">
-                    <button
-                      type="submit"
-                      className="button button-primary button-sm"
-                      disabled={isGuest || supabaseSaving}
-                      title={isGuest ? "Sign in to configure cloud database" : undefined}
-                    >
-                      {supabaseSaving ? (
-                        <>
-                          <RefreshCw size={12} className="spin-icon" /> Saving…
-                        </>
-                      ) : (
-                        "Save & Connect Supabase"
-                      )}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    <button type="submit" className="button button-primary button-sm" disabled={supabaseSaving}>
+                      {supabaseSaving ? "Saving…" : "Save Override"}
                     </button>
-                    {supabaseUrl && !isGuest && (
-                      <button
-                        type="button"
-                        className="button button-secondary button-sm"
-                        onClick={() => {
-                          setSupabaseUrl("");
-                          setSupabaseAnonKey("");
-                          saveSupabaseConfig("", "");
-                          setClient(null);
-                          setSupabaseStatusMsg("Disconnected. Reverted to workspace account mode.");
-                        }}
-                      >
-                        Disconnect
-                      </button>
-                    )}
+                    <button type="button" className="button button-secondary button-sm" onClick={checkServerDbStatus} disabled={checkingDb}>
+                      {checkingDb ? "Checking…" : "Verify Server DB"}
+                    </button>
+                    <button type="button" className="button button-secondary button-sm" onClick={triggerSeedDatabase} disabled={seedingDb}>
+                      {seedingDb ? "Refreshing…" : "Refresh My Saved"}
+                    </button>
+                    <button type="button" className="button button-secondary button-sm" onClick={() => setShowSqlViewer(!showSqlViewer)}>
+                      {showSqlViewer ? "Hide SQL" : "SQL Ref"}
+                    </button>
                   </div>
                 </form>
 
-                {/* Database Verification & Live API Sync Controls */}
-                <div className="db-verification-box" style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-color, #23272f)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <strong style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                      <Database size={13} className="text-amber" />
-                      Database & Live API Synchronization
-                    </strong>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        type="button"
-                        className="button button-secondary button-sm"
-                        onClick={copySqlToClipboard}
-                        title="Copy database table definitions for Supabase SQL Editor"
-                      >
-                        {copiedSql ? <Check size={12} className="text-green" /> : <Copy size={12} />}
-                        <span>{copiedSql ? "Copied SQL!" : "Copy SQL Script"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary button-sm"
-                        onClick={() => setShowSqlViewer(!showSqlViewer)}
-                      >
-                        {showSqlViewer ? "Hide SQL" : "View SQL"}
-                      </button>
-                    </div>
+                {dbLiveStatus && (
+                  <div style={{ marginTop: 12, fontSize: 12 }}>
+                    <strong>{dbLiveStatus.connected ? "Connected" : "Offline"}:</strong> {dbLiveStatus.message}
                   </div>
+                )}
 
-                  <p style={{ fontSize: 12, color: "var(--muted, #8b949e)", marginBottom: 12, lineHeight: 1.5 }}>
-                    <strong>Live Federated Architecture:</strong> Searches execute directly against real platform APIs at query time. Supabase stores your workspace prospects, saved creators, campaign shortlists, and outreach notes. No fixed or mock creator catalogs are stored.
-                  </p>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                    <button
-                      type="button"
-                      className="button button-secondary button-sm"
-                      onClick={checkServerDbStatus}
-                      disabled={checkingDb}
-                    >
-                      {checkingDb ? (
-                        <>
-                          <RefreshCw size={12} className="spin-icon" /> Checking Database…
-                        </>
-                      ) : (
-                        "Verify Server Database"
-                      )}
+                {showSqlViewer && (
+                  <div style={{ marginTop: 10 }}>
+                    <button type="button" className="button button-secondary button-sm" onClick={copySqlToClipboard}>
+                      {copiedSql ? <Check size={11} /> : <Copy size={11} />} Copy SQL Ref
                     </button>
-
-                    <button
-                      type="button"
-                      className="button button-primary button-sm"
-                      onClick={triggerSeedDatabase}
-                      disabled={isGuest || seedingDb}
-                      title={isGuest ? "Sign in as workspace owner or admin to trigger live sync" : undefined}
-                    >
-                      {seedingDb ? (
-                        <>
-                          <RefreshCw size={12} className="spin-icon" /> Syncing from APIs…
-                        </>
-                      ) : (
-                        "⚡ Sync Live Data to Database"
-                      )}
-                    </button>
+                    <pre style={{ fontSize: 11, marginTop: 6 }}>{SQL_SCHEMA_SNIPPET}</pre>
                   </div>
+                )}
+              </div>
 
-                  {dbLiveStatus && (
-                    <div
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 8,
-                        backgroundColor: dbLiveStatus.connected ? "rgba(46, 125, 72, 0.15)" : "rgba(229, 83, 75, 0.15)",
-                        border: `1px solid ${dbLiveStatus.connected ? "rgba(46, 125, 72, 0.4)" : "rgba(229, 83, 75, 0.4)"}`,
-                        fontSize: 12,
-                        marginBottom: 12,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, color: dbLiveStatus.connected ? "#4ade80" : "#f87171", marginBottom: 4 }}>
-                        {dbLiveStatus.connected ? "✓ Supabase Database Operational" : "✕ Database Connection Offline"}
-                      </div>
-                      <div>{dbLiveStatus.message}</div>
-                      {dbLiveStatus.tableExists && (
-                        <div style={{ marginTop: 4, color: "#9ca3af" }}>
-                          Supabase Stored Records: <strong>{dbLiveStatus.creatorCount}</strong> | Architecture: <strong>Live Platform APIs (Zero Fixed Catalogs)</strong>
-                        </div>
-                      )}
+              {envStatus && (
+                <div className="card provider-info-card section-spacer">
+                  <div className="card-head">
+                    <div>
+                      <h2 className="card-title">Admin Server Environment Check</h2>
+                      <p className="card-caption">Internal deployment variables</p>
                     </div>
-                  )}
-
-                  {showSqlViewer && (
-                    <div style={{ marginTop: 10, marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ fontSize: 11, color: "#9ca3af" }}>PostgreSQL Migration Script (Supabase SQL Editor):</span>
-                        <button
-                          type="button"
-                          className="button button-secondary button-sm"
-                          style={{ padding: "2px 8px", height: 24, fontSize: 11 }}
-                          onClick={copySqlToClipboard}
-                        >
-                          <Copy size={11} /> Copy
-                        </button>
-                      </div>
-                      <pre
-                        style={{
-                          backgroundColor: "#0d1117",
-                          padding: 12,
-                          borderRadius: 6,
-                          fontSize: 11,
-                          overflowX: "auto",
-                          maxHeight: 220,
-                          color: "#c9d1d9",
-                          border: "1px solid #30363d",
-                        }}
-                      >
-                        {SQL_SCHEMA_SNIPPET}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* 4-Step Quick Setup Guide */}
-                  <div
-                    style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      backgroundColor: "rgba(255, 255, 255, 0.03)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      fontSize: 12,
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, marginBottom: 6, color: "#e6edf3" }}>
-                      Quick 3-Minute Database Setup Guide:
-                    </div>
-                    <ol style={{ paddingLeft: 18, margin: 0, color: "#8b949e", lineHeight: 1.6 }}>
-                      <li>
-                        Go to <a href="https://supabase.com" target="_blank" rel="noreferrer" style={{ color: "#58a6ff" }}>supabase.com</a> and create a free project.
-                      </li>
-                      <li>
-                        Click <strong>SQL Editor</strong> in the left sidebar, paste the SQL script (click <em>Copy SQL Script</em> above), and click <strong>Run</strong>.
-                      </li>
-                      <li>
-                        Go to <strong>Project Settings → API</strong>, copy your <strong>Project URL</strong> and <strong>anon public API key</strong>, and paste them above.
-                      </li>
-                      <li>
-                        Click <strong>Save & Connect</strong>, then click <strong>⚡ Sync Live Data to Database</strong>. GetViral will automatically fetch live channels from YouTube & Kick and populate your database!
-                      </li>
-                    </ol>
+                    <KeyRound size={15} color="#46735a" />
                   </div>
+                  <ul className="principle-list">
+                    <li><code>YOUTUBE_DATA_API_KEY</code>: {envStatus.YOUTUBE_DATA_API_KEY ? "Configured" : "Not Set"}</li>
+                    <li><code>TWITCH_CLIENT_ID / SECRET</code>: {envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "Configured" : "Not Set"}</li>
+                    <li><code>KICK_PUBLIC_API</code>: Active</li>
+                    <li><code>TIKTOK_CLIENT_KEY</code>: {envStatus.TIKTOK_CLIENT_KEY ? "Set (OAuth needed)" : "Not Set"}</li>
+                    <li><code>META_APP_ID</code>: {envStatus.META_APP_ID ? "Set (OAuth needed)" : "Not Set"}</li>
+                  </ul>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Environment Variables Reference */}
-          <div className="card provider-info-card section-spacer">
-            <div className="card-head">
-              <div>
-                <h2 className="card-title">API Environment Keys & Live Server Health</h2>
-                <p className="card-caption">Inspected from real server-side environment variables</p>
-              </div>
-              <KeyRound size={15} color="#46735a" />
-            </div>
-
-            <ul className="principle-list">
-              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
-                  <code>YOUTUBE_DATA_API_KEY</code> —{" "}
-                  {envStatus.YOUTUBE_DATA_API_KEY
-                    ? "Active for live YouTube Data API v3 search & statistics."
-                    : "Not set on server; live YouTube keyword discovery & stats are unavailable."}
-                </div>
-                <span
-                  className="status-pill"
-                  style={{
-                    backgroundColor: envStatus.YOUTUBE_DATA_API_KEY ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                    color: envStatus.YOUTUBE_DATA_API_KEY ? "#15803d" : "#b91c1c",
-                    border: `1px solid ${envStatus.YOUTUBE_DATA_API_KEY ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
-                    whiteSpace: "nowrap",
-                    fontSize: 11,
-                  }}
-                >
-                  {envStatus.YOUTUBE_DATA_API_KEY ? "✓ Configured" : "✕ Not Set"}
-                </span>
-              </li>
-              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
-                  <code>TWITCH_CLIENT_ID</code> & <code>TWITCH_CLIENT_SECRET</code> —{" "}
-                  {envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET
-                    ? "Active for live Twitch Helix search & stream status."
-                    : "Not set on server; live Twitch Helix discovery is unavailable."}
-                </div>
-                <span
-                  className="status-pill"
-                  style={{
-                    backgroundColor: envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                    color: envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "#15803d" : "#b91c1c",
-                    border: `1px solid ${envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
-                    whiteSpace: "nowrap",
-                    fontSize: 11,
-                  }}
-                >
-                  {envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "✓ Configured" : "✕ Not Set"}
-                </span>
-              </li>
-              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
-                  <code>KICK_PUBLIC_API</code> — Public REST v2 active for exact-handle lookup & livestream status (keyword discovery unsupported).
-                </div>
-                <span
-                  className="status-pill"
-                  style={{
-                    backgroundColor: "rgba(34, 197, 94, 0.15)",
-                    color: "#15803d",
-                    border: "1px solid rgba(34, 197, 94, 0.3)",
-                    whiteSpace: "nowrap",
-                    fontSize: 11,
-                  }}
-                >
-                  ✓ Public API Active
-                </span>
-              </li>
-              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
-                  <code>TIKTOK_CLIENT_KEY</code> & <code>META_APP_ID</code> —{" "}
-                  {envStatus.TIKTOK_CLIENT_KEY || envStatus.META_APP_ID
-                    ? "Developer app IDs present; individual creator/Meta OAuth flow required per creator."
-                    : "Unavailable for public discovery; requires TikTok Creator OAuth & Meta App Review."}
-                </div>
-                <span
-                  className="status-pill"
-                  style={{
-                    backgroundColor: "rgba(100, 116, 139, 0.15)",
-                    color: "#475569",
-                    border: "1px solid rgba(100, 116, 139, 0.3)",
-                    whiteSpace: "nowrap",
-                    fontSize: 11,
-                  }}
-                >
-                  OAuth Required
-                </span>
-              </li>
-              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
-                  <code>NEXT_PUBLIC_SUPABASE_URL</code> —{" "}
-                  {envStatus.NEXT_PUBLIC_SUPABASE_URL
-                    ? "Connected for team workspace persistence, auth & quota enforcement."
-                    : "Not configured; using local workspace storage."}
-                </div>
-                <span
-                  className="status-pill"
-                  style={{
-                    backgroundColor: envStatus.NEXT_PUBLIC_SUPABASE_URL ? "rgba(34, 197, 94, 0.15)" : "rgba(100, 116, 139, 0.15)",
-                    color: envStatus.NEXT_PUBLIC_SUPABASE_URL ? "#15803d" : "#475569",
-                    border: `1px solid ${envStatus.NEXT_PUBLIC_SUPABASE_URL ? "rgba(34, 197, 94, 0.3)" : "rgba(100, 116, 139, 0.3)"}`,
-                    whiteSpace: "nowrap",
-                    fontSize: 11,
-                  }}
-                >
-                  {envStatus.NEXT_PUBLIC_SUPABASE_URL ? "✓ Connected" : "Local Mode"}
-                </span>
-              </li>
-            </ul>
-
-            <div className="settings-doc-link">
-              <a href="https://developers.google.com/youtube/v3/docs" target="_blank" rel="noreferrer">
-                YouTube API Docs <ExternalLink size={11} />
-              </a>
-              <a href="https://docs.kick.com/apis/" target="_blank" rel="noreferrer">
-                Kick API Docs <ExternalLink size={11} />
-              </a>
-              <a href="https://dev.twitch.tv/docs/api/reference/" target="_blank" rel="noreferrer">
-                Twitch Helix Docs <ExternalLink size={11} />
-              </a>
-            </div>
-          </div>
+              )}
+            </>
+          )}
         </section>
       </div>
     </>

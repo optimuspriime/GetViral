@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   createSignedGuestToken,
+  hashClientIp,
+  isAdminEmail,
   parseCookieValue,
   signValue,
   verifySignedValue,
 } from "../lib/auth/tokens";
-import { getDefaultSubscription, SUBSCRIPTION_TIERS } from "../lib/subscription";
+import { getDefaultSubscription, GUEST_PREVIEW_QUOTA, SUBSCRIPTION_TIERS } from "../lib/subscription";
 import { refreshSavedCreatorsFromConnectors } from "../lib/api-fetcher";
 import { INTEGRATIONS } from "../lib/integrations";
 
@@ -91,5 +93,50 @@ test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
     const emptySync = await refreshSavedCreatorsFromConnectors([]);
     assert.equal(emptySync.creators.length, 0);
     assert.equal(emptySync.stats.totalSynced, 0);
+  });
+
+  await t.test("7. Guest Preview quota defaults to 5 and hashes client IPs deterministically", () => {
+    assert.equal(GUEST_PREVIEW_QUOTA, 5);
+    const guestSub = getDefaultSubscription("free", true);
+    assert.equal(guestSub.totalQuota, 5);
+    assert.equal(guestSub.searchesRemaining, 5);
+
+    const authSub = getDefaultSubscription("free", false);
+    assert.equal(authSub.totalQuota, 50);
+    assert.equal(authSub.searchesRemaining, 50);
+
+    const ipHashA1 = hashClientIp("203.0.113.42");
+    const ipHashA2 = hashClientIp("203.0.113.42");
+    const ipHashB = hashClientIp("198.51.100.7");
+    assert.equal(ipHashA1, ipHashA2);
+    assert.notEqual(ipHashA1, ipHashB);
+    assert.equal(ipHashA1.length, 24);
+  });
+
+  await t.test("8. Admin role check enforces ADMIN_EMAILS allowlist and TikTok copy has no Meta text", () => {
+    const prevAdmins = process.env.ADMIN_EMAILS;
+    try {
+      delete process.env.ADMIN_EMAILS;
+      assert.equal(isAdminEmail("admin@getviral.io"), false);
+      assert.equal(isAdminEmail(null), false);
+
+      process.env.ADMIN_EMAILS = " founder@getviral.io , ops@getviral.io ";
+      assert.equal(isAdminEmail("Founder@GetViral.io"), true);
+      assert.equal(isAdminEmail("ops@getviral.io"), true);
+      assert.equal(isAdminEmail("guest@example.com"), false);
+    } finally {
+      if (prevAdmins === undefined) {
+        delete process.env.ADMIN_EMAILS;
+      } else {
+        process.env.ADMIN_EMAILS = prevAdmins;
+      }
+    }
+
+    const tiktok = INTEGRATIONS.find((i) => i.platform === "TikTok");
+    assert.ok(tiktok);
+    assert.equal(tiktok.connectorStatus.includes("Meta"), false);
+    assert.equal(tiktok.setup.includes("Meta"), false);
+    assert.equal(tiktok.limitation.includes("Meta"), false);
+    assert.equal(tiktok.statusNote.includes("Meta"), false);
   });
 });

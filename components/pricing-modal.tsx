@@ -39,12 +39,17 @@ export function PricingModal() {
             </span>
             <h2>Choose the Right Plan for Your Scout Operations</h2>
             <p>
-              Current Quota:{" "}
+              {isGuest ? "Guest Preview Quota: " : "Current Quota: "}
               <strong>
                 {subscription.totalQuota === -1
                   ? "Unlimited Searches (Enterprise)"
                   : `${subscription.searchesRemaining} of ${subscription.totalQuota} searches remaining`}
               </strong>
+              {isGuest && (
+                <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                  Sign in free to unlock 50 searches per month, saved creator shortlists, and workspace sync.
+                </span>
+              )}
             </p>
           </div>
 

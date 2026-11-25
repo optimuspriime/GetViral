@@ -39,7 +39,9 @@ export async function federatedSearch(
     };
   }
 
-  // Build tasks to run in parallel
+  // Kick only supports exact single-token channel handles (no spaces)
+  const isSingleHandleToken = !/\s/.test(q);
+
   const tasks: Array<{ platform: Platform; promise: Promise<ConnectorResponse> }> = [];
 
   if (!targetPlatform || targetPlatform === "YouTube") {
@@ -49,7 +51,24 @@ export async function federatedSearch(
     tasks.push({ platform: "Twitch", promise: searchTwitch(q, options) });
   }
   if (!targetPlatform || targetPlatform === "Kick") {
-    tasks.push({ platform: "Kick", promise: lookupKick(q, options) });
+    if (isSingleHandleToken) {
+      tasks.push({ platform: "Kick", promise: lookupKick(q, options) });
+    } else {
+      tasks.push({
+        platform: "Kick",
+        promise: Promise.resolve({
+          platform: "Kick",
+          status: "unsupported_operation",
+          message:
+            'Kick supports exact single-word @handle lookup only (e.g. "@adinross" or "xqc"). Multi-word keyword queries are skipped on Kick.',
+          items: [],
+          capabilities: kickCapabilities,
+          fetchedAt: now,
+          source: "Kick Channel API",
+          isLive: false,
+        }),
+      });
+    }
   }
   if (!targetPlatform || targetPlatform === "TikTok") {
     tasks.push({ platform: "TikTok", promise: searchTikTok(q) });
