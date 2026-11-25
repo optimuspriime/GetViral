@@ -7,6 +7,7 @@ import { useProspects } from "@/components/data-provider";
 import { platformColors } from "@/lib/platforms";
 import { currentFollowers } from "@/lib/metrics";
 import { getCountryFlag } from "@/lib/country-detector";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 
 export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -14,12 +15,15 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef(true);
+
+  useDialogAccessibility(isOpen, onClose, dialogRef, inputRef, restoreFocusRef);
 
   useEffect(() => {
     if (isOpen) {
       setQuery("");
       setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
 
@@ -44,11 +48,13 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
   ];
 
   function handleSelectCreator(id: string) {
+    restoreFocusRef.current = false;
     onClose();
     router.push(`/creators/${id}`);
   }
 
   function handleNav(href: string) {
+    restoreFocusRef.current = false;
     onClose();
     router.push(href);
   }
@@ -56,10 +62,7 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!isOpen) return;
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      } else if (e.key === "ArrowDown") {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev + 1) % Math.max(1, filteredCreators.length));
       } else if (e.key === "ArrowUp") {
@@ -67,6 +70,7 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
         setSelectedIndex((prev) => (prev - 1 + filteredCreators.length) % Math.max(1, filteredCreators.length));
       } else if (e.key === "Enter" && filteredCreators[selectedIndex]) {
         e.preventDefault();
+        restoreFocusRef.current = false;
         onClose();
         router.push(`/creators/${filteredCreators[selectedIndex].id}`);
       }
@@ -78,8 +82,22 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="command-palette-card" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="command-palette-title"
+    >
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="command-palette-card"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="command-palette-title" className="sr-only">
+          Quick Search and Navigation
+        </h2>
         <div className="command-palette-search">
           <Search size={18} className="search-icon-muted" />
           <input

@@ -6,7 +6,7 @@ import {
   BarChart3, CircleHelp, Users, Video, Radio, ChevronRight,
   Bookmark, Sparkles, CheckCircle2, X, Search, Globe, ShieldCheck
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProspects } from "@/components/data-provider";
 import {
   ComparisonBarChart, PlatformChart, shortNumber
@@ -17,48 +17,21 @@ import { INTEGRATIONS, type IntegrationHealthItem } from "@/lib/integrations";
 import type { Creator, PlatformAccount } from "@/lib/model";
 import { currentFollowers, currentReach, reachMetricName } from "@/lib/metrics";
 import { getCountryFlag } from "@/lib/country-detector";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 
 type AccountWithCreator = { creator: Creator; account: PlatformAccount };
 
-// Read-only illustrative sample showcase for cold first-time visitors (isolated from CRM & search)
-const SAMPLE_PREVIEW_CARDS = [
-  {
-    name: "AdinRoss",
-    handle: "@adinross",
-    platform: "Kick" as const,
-    category: "Just Chatting",
-    country: "United States",
-    metricPrimary: "3.3M followers",
-    metricSecondary: "Live status & channel lookup",
-    provenance: "Kick Channel Lookup",
-  },
-  {
-    name: "Kai Cenat",
-    handle: "@kaicenat",
-    platform: "Twitch" as const,
-    category: "Entertainment",
-    country: "United States",
-    metricPrimary: "Live stream viewers",
-    metricSecondary: "Real-time broadcast stats",
-    provenance: "Twitch Live Search",
-  },
-  {
-    name: "CarryMinati",
-    handle: "@CarryMinati",
-    platform: "YouTube" as const,
-    category: "Entertainment",
-    country: "India",
-    metricPrimary: "Channel subscribers",
-    metricSecondary: "Avg. video views & contact URL",
-    provenance: "YouTube Channel Search",
-  },
-];
-
 export default function DashboardPage() {
   const router = useRouter();
-  const { creators, lists, activeWorkspace, subscription, isGuest } = useProspects();
+  const { creators, lists, activeWorkspace, subscription, isGuest, setPricingModalOpen } = useProspects();
   const [showExplainer, setShowExplainer] = useState(false);
   const [quickSearchInput, setQuickSearchInput] = useState("");
+  const explainerDialogRef = useRef<HTMLDivElement>(null);
+  const explainerCloseRef = useRef<HTMLButtonElement>(null);
+
+  useDialogAccessibility(showExplainer, () => setShowExplainer(false), explainerDialogRef, explainerCloseRef);
+
+  const isQuotaExhausted = subscription.totalQuota !== -1 && subscription.searchesRemaining <= 0;
   const [connectorsLoaded, setConnectorsLoaded] = useState(false);
   const [integrationsHealth, setIntegrationsHealth] = useState<IntegrationHealthItem[]>(() =>
     INTEGRATIONS.map((i) => ({
@@ -138,6 +111,14 @@ export default function DashboardPage() {
 
   function handleQuickSearch(e: React.FormEvent) {
     e.preventDefault();
+    if (isQuotaExhausted) {
+      if (isGuest) {
+        router.push("/auth");
+      } else {
+        setPricingModalOpen(true);
+      }
+      return;
+    }
     if (!quickSearchInput.trim()) return;
     router.push(`/discover?q=${encodeURIComponent(quickSearchInput.trim())}`);
   }
@@ -165,14 +146,51 @@ export default function DashboardPage() {
               <input
                 className="hero-search-input"
                 style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15 }}
-                placeholder="Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
+                placeholder={
+                  isQuotaExhausted
+                    ? isGuest
+                      ? "Guest preview limit reached (0/5) — sign in for 50 monthly searches"
+                      : "Monthly quota reached (0 remaining) — view plans"
+                    : "Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
+                }
                 value={quickSearchInput}
+                disabled={isQuotaExhausted}
                 onChange={(e) => setQuickSearchInput(e.target.value)}
               />
-              <button type="submit" className="button button-primary button-sm" style={{ padding: "7px 18px" }}>
-                Search Creators
+              <button
+                type="submit"
+                className="button button-primary button-sm"
+                style={{ padding: "7px 18px" }}
+                disabled={isQuotaExhausted}
+                title={isQuotaExhausted ? "Search quota exhausted" : undefined}
+              >
+                {isQuotaExhausted ? "Limit Reached" : "Search Creators"}
               </button>
             </div>
+
+            {isQuotaExhausted && (
+              <div className="quota-limit-banner" role="status">
+                <span>
+                  {isGuest
+                    ? "Guest preview limit reached (0 of 5 searches left). Sign in free for 50 monthly searches."
+                    : "Monthly search quota reached (0 searches remaining)."}
+                </span>
+                <div className="quota-limit-actions">
+                  {isGuest && (
+                    <Link href="/auth" className="button button-primary button-sm">
+                      Sign In Free (50 Searches)
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    className="button button-secondary button-sm"
+                    onClick={() => setPricingModalOpen(true)}
+                  >
+                    View Plans
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", fontSize: 12, alignItems: "center" }}>
               <span style={{ color: "var(--muted, #68836c)" }}>Kick @handle:</span>
@@ -180,6 +198,8 @@ export default function DashboardPage() {
                 <button
                   key={handle}
                   type="button"
+                  disabled={isQuotaExhausted}
+                  title={isQuotaExhausted ? "Search quota exhausted" : `Look up ${handle} live on Kick`}
                   onClick={() =>
                     router.push(`/discover?platform=Kick&q=${encodeURIComponent(handle)}`)
                   }
@@ -188,7 +208,8 @@ export default function DashboardPage() {
                     border: "1px solid rgba(80, 140, 80, 0.28)",
                     borderRadius: 16,
                     padding: "3px 10px",
-                    cursor: "pointer",
+                    cursor: isQuotaExhausted ? "not-allowed" : "pointer",
+                    opacity: isQuotaExhausted ? 0.5 : 1,
                     fontSize: 11,
                     fontWeight: 600,
                     color: "#15803d",
@@ -203,13 +224,16 @@ export default function DashboardPage() {
                 <button
                   key={term}
                   type="button"
+                  disabled={isQuotaExhausted}
+                  title={isQuotaExhausted ? "Search quota exhausted" : `Search "${term}"`}
                   onClick={() => router.push(`/discover?q=${encodeURIComponent(term)}`)}
                   style={{
                     background: "rgba(255, 255, 255, 0.65)",
                     border: "1px solid rgba(80, 140, 80, 0.18)",
                     borderRadius: 16,
                     padding: "3px 10px",
-                    cursor: "pointer",
+                    cursor: isQuotaExhausted ? "not-allowed" : "pointer",
+                    opacity: isQuotaExhausted ? 0.5 : 1,
                     fontSize: 11,
                     color: "#285d38",
                   }}
@@ -533,96 +557,65 @@ export default function DashboardPage() {
           </section>
         </>
       ) : (
-        /* Cold Visitor & Empty Workspace Sample Showcase (Clearly Labeled Demo Fixture) */
-        <section className="card" style={{ padding: "24px", margin: "24px 0" }}>
-          <div className="card-head" style={{ marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h2 className="card-title">How Creator Intelligence Looks in GetViral</h2>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                    background: "#fef3c7",
-                    color: "#92400e",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Sample Preview · Demo Fixture
-                </span>
-              </div>
-              <p className="card-caption">
-                Illustrative examples of creator analytics cards (0 saved in your workspace yet — search live creators or sign in to save your own)
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Link href="/discover?platform=Kick&q=%40adinross" className="button button-primary button-sm">
-                <Search size={13} /> Try Live Kick Lookup (@adinross)
+        /* Honest Live-Only Empty Workspace State (Zero Sample / Fixture Creators) */
+        <section className="card" style={{ padding: "28px 24px", margin: "24px 0" }}>
+          <div className="empty-state" style={{ padding: "12px 0" }}>
+            <span className="empty-icon">
+              <Users size={22} />
+            </span>
+            <strong style={{ fontSize: 17, marginTop: 10 }}>No Saved Creators Yet</strong>
+            <p style={{ maxWidth: 520, margin: "6px auto 18px" }}>
+              {isGuest
+                ? "Guest workspaces do not pre-load sample or demo profiles. Run live creator discovery across active platforms or sign in to save creators into private shortlists."
+                : "Your workspace currently has 0 saved creators. Discover creators live from connected platforms and bookmark profiles to track outreach and metrics."}
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <Link href="/discover" className="button button-primary button-sm">
+                <Search size={13} /> Open Discovery Workspace
               </Link>
               {isGuest && (
                 <Link href="/auth" className="button button-secondary button-sm">
                   Sign In to Save Creators
                 </Link>
               )}
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 }}>
-            {SAMPLE_PREVIEW_CARDS.map((card) => (
-              <div
-                key={card.handle}
-                style={{
-                  border: "1px dashed rgba(80, 140, 80, 0.28)",
-                  borderRadius: 12,
-                  padding: "14px 16px",
-                  background: "rgba(255, 255, 255, 0.65)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
+              <button
+                type="button"
+                className="button button-secondary button-sm"
+                onClick={() => setShowExplainer(true)}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <strong style={{ fontSize: 14, color: "#1d472b", display: "block" }}>{card.name}</strong>
-                    <span style={{ fontSize: 11, color: "#68836c" }}>{card.handle} · {card.category}</span>
-                  </div>
-                  <span
-                    className={`platform-label platform-badge platform-${card.platform.toLowerCase()}`}
-                    style={{ fontSize: 10 }}
-                  >
-                    {card.platform}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: "#285d38", fontWeight: 600 }}>
-                  {card.metricPrimary}
-                </div>
-                <div style={{ fontSize: 11, color: "#547359" }}>
-                  {card.metricSecondary} · {getCountryFlag(card.country)} {card.country}
-                </div>
-                <div style={{ fontSize: 10, color: "#78350f", marginTop: "auto", paddingTop: 6, borderTop: "1px solid rgba(80, 140, 80, 0.1)" }}>
-                  Sample Layout ({card.provenance})
-                </div>
-              </div>
-            ))}
+                <CircleHelp size={13} /> Platform Capability Guide
+              </button>
+            </div>
           </div>
         </section>
       )}
 
       {/* Capability Guide Modal (Technical API specs housed cleanly here rather than marketer UI) */}
       {showExplainer && (
-        <div className="modal-backdrop" onClick={() => setShowExplainer(false)}>
-          <div className="explainer-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowExplainer(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="capability-guide-title"
+        >
+          <div
+            ref={explainerDialogRef}
+            tabIndex={-1}
+            className="explainer-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <div className="modal-title-wrap">
                 <CircleHelp size={20} className="modal-icon-green" />
-                <h3>Platform Capabilities &amp; Technical Guide</h3>
+                <h3 id="capability-guide-title">Platform Capabilities &amp; Technical Guide</h3>
               </div>
               <button
+                ref={explainerCloseRef}
                 className="icon-button"
                 onClick={() => setShowExplainer(false)}
                 aria-label="Close dialog"
+                type="button"
               >
                 <X size={16} />
               </button>

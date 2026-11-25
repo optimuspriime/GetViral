@@ -1,16 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bookmark, Download, Search, SlidersHorizontal, UserPlus, UserRoundSearch, X,
-  Check, Sparkles, RefreshCw, Zap, Info, AlertCircle
+  Check, Sparkles, RefreshCw, Zap, Info, AlertCircle, Lock
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProspects } from "@/components/data-provider";
 import { platformColors } from "@/lib/platforms";
 import type { Creator, Platform, PlatformAccount } from "@/lib/model";
 import { currentFollowers, currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
 import { COMMON_COUNTRIES, detectCreatorCountry, getCountryFlag } from "@/lib/country-detector";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 
 type Filters = {
   query: string;
@@ -49,6 +51,32 @@ const initialFilters: Filters = {
 };
 
 const platformsList = ["All platforms", "YouTube", "Twitch", "Kick", "TikTok", "Instagram"];
+
+const BASELINE_CATEGORIES = [
+  "Comedy",
+  "Education",
+  "Entertainment",
+  "Finance",
+  "Gaming",
+  "Just Chatting",
+  "Lifestyle",
+  "Music",
+  "News & Politics",
+  "Sports",
+  "Technology",
+];
+
+const BASELINE_LANGUAGES = [
+  "Arabic",
+  "English",
+  "French",
+  "German",
+  "Hindi",
+  "Japanese",
+  "Korean",
+  "Portuguese",
+  "Spanish",
+];
 
 function getEmptyFilterGuidance(
   filters: Filters,
@@ -142,6 +170,15 @@ export default function DiscoverPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
   const [importResult, setImportResult] = useState<Partial<Creator> | null>(null);
+  const importDialogRef = useRef<HTMLDivElement>(null);
+  const importSelectRef = useRef<HTMLSelectElement>(null);
+
+  useDialogAccessibility(
+    importModalOpen,
+    () => setImportModalOpen(false),
+    importDialogRef,
+    importSelectRef,
+  );
 
   const {
     creators: savedCreators,
@@ -691,16 +728,19 @@ export default function DiscoverPage() {
   }
 
   const categories = [
-    ...new Set(
-      activeDataset.map((creator) => creator.category).filter((value): value is string => !!value),
-    ),
+    ...new Set([
+      ...BASELINE_CATEGORIES,
+      ...activeDataset.map((creator) => creator.category).filter((value): value is string => !!value),
+    ]),
   ].sort();
   const languages = [
-    ...new Set(
-      activeDataset.map((creator) => creator.language).filter((value): value is string => !!value),
-    ),
+    ...new Set([
+      ...BASELINE_LANGUAGES,
+      ...activeDataset.map((creator) => creator.language).filter((value): value is string => !!value),
+    ]),
   ].sort();
   const savedAccountIds = new Set(lists.flatMap((list) => list.creatorIds));
+  const isQuotaExhausted = subscription.totalQuota !== -1 && subscription.searchesRemaining <= 0;
 
   return (
     <>
@@ -796,11 +836,15 @@ export default function DiscoverPage() {
           <button
             type="submit"
             className="search-submit-btn"
-            disabled={isSearching}
-            title="Search creators across active platforms"
+            disabled={isSearching || isQuotaExhausted}
+            title={
+              isQuotaExhausted
+                ? "Search quota exhausted — sign in or upgrade plan"
+                : "Search creators across active platforms"
+            }
           >
             {isSearching ? <RefreshCw size={13} className="spin-icon" /> : <Search size={13} />}
-            <span>{isSearching ? "Searching…" : "Search"}</span>
+            <span>{isSearching ? "Searching…" : isQuotaExhausted ? "Limit Reached" : "Search"}</span>
           </button>
 
           {/* Search Quota Pill */}
@@ -847,6 +891,34 @@ export default function DiscoverPage() {
           {appliedFilters.length > 0 && <span className="filter-count">{appliedFilters.length}</span>}
         </button>
       </div>
+
+      {/* Zero-Quota Exhaustion Notice Banner */}
+      {isQuotaExhausted && (
+        <div className="quota-limit-banner" role="status">
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Lock size={14} style={{ flexShrink: 0 }} />
+            <span>
+              {isGuest
+                ? "Guest preview limit reached (0 of 5 searches remaining). Sign in with a free account to unlock 50 monthly searches."
+                : "Monthly search quota exhausted (0 searches remaining). Upgrade your plan to continue running live queries."}
+            </span>
+          </span>
+          <div className="quota-limit-actions">
+            {isGuest && (
+              <Link href="/auth" className="button button-primary button-sm">
+                Sign In Free (50 Searches)
+              </Link>
+            )}
+            <button
+              type="button"
+              className="button button-secondary button-sm"
+              onClick={() => setPricingModalOpen(true)}
+            >
+              View Plans
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Federated Search Provenance & Provider Status Bar */}
       {searchProvenance && (
@@ -997,6 +1069,9 @@ export default function DiscoverPage() {
                   <option key={category}>{category}</option>
                 ))}
               </select>
+              <span className="filter-hint">
+                Filters loaded live results or saved creators; dynamically adds platform categories.
+              </span>
             </FilterGroup>
 
             <FilterGroup label="Creator Country">
@@ -1149,6 +1224,9 @@ export default function DiscoverPage() {
                   <option key={language}>{language}</option>
                 ))}
               </select>
+              <span className="filter-hint">
+                Applies to loaded live results or saved workspace profiles.
+              </span>
             </FilterGroup>
 
             {/* Audience Geography Info Box */}
@@ -1694,12 +1772,17 @@ export default function DiscoverPage() {
                     <button
                       key={item.term}
                       className="button button-secondary button-sm"
+                      disabled={isQuotaExhausted || isSearching}
                       onClick={() => {
                         setSearchInput(item.term);
                         void executeSearch(item.term);
                       }}
                       type="button"
-                      title={item.hint}
+                      title={
+                        isQuotaExhausted
+                          ? "Search quota exhausted — sign in or view plans"
+                          : item.hint
+                      }
                     >
                       <Search size={12} /> {item.term}
                       <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500 }}>· {item.hint}</span>
@@ -1737,12 +1820,23 @@ export default function DiscoverPage() {
 
       {/* Direct Handle Lookup via Live API Modal */}
       {importModalOpen && (
-        <div className="modal-backdrop" onClick={() => setImportModalOpen(false)}>
-          <div className="import-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-backdrop"
+          onClick={() => setImportModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="direct-lookup-dialog-title"
+        >
+          <div
+            ref={importDialogRef}
+            tabIndex={-1}
+            className="import-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <div className="modal-title-wrap">
                 <UserPlus size={18} className="modal-icon-green" />
-                <h3>Direct Channel Handle Lookup</h3>
+                <h3 id="direct-lookup-dialog-title">Direct Channel Handle Lookup</h3>
               </div>
               <button
                 className="icon-button"
@@ -1759,10 +1853,43 @@ export default function DiscoverPage() {
                 Look up any creator channel directly by exact @handle or username across active platform integrations.
               </p>
 
+              {isQuotaExhausted && (
+                <div className="quota-limit-banner" role="status" style={{ marginTop: 4, marginBottom: 4 }}>
+                  <span>
+                    {isGuest
+                      ? "Guest preview limit reached (0/5 searches left). Sign in free for 50 searches."
+                      : "Search quota exhausted (0 remaining). Upgrade plan to continue."}
+                  </span>
+                  <div className="quota-limit-actions">
+                    {isGuest ? (
+                      <Link
+                        href="/auth"
+                        className="button button-primary button-sm"
+                        onClick={() => setImportModalOpen(false)}
+                      >
+                        Sign In Free
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="button button-primary button-sm"
+                        onClick={() => {
+                          setImportModalOpen(false);
+                          setPricingModalOpen(true);
+                        }}
+                      >
+                        View Plans
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="import-form-row">
                 <label className="import-label">
                   Platform
                   <select
+                    ref={importSelectRef}
                     className="filter-select"
                     aria-label="Platform to query"
                     value={importPlatform}
@@ -1791,7 +1918,11 @@ export default function DiscoverPage() {
                     }
                     value={importHandle}
                     onChange={(e) => setImportHandle(e.target.value)}
-                    disabled={importPlatform === "TikTok" || importPlatform === "Instagram"}
+                    disabled={
+                      isQuotaExhausted ||
+                      importPlatform === "TikTok" ||
+                      importPlatform === "Instagram"
+                    }
                     required
                   />
                 </label>
@@ -1817,14 +1948,20 @@ export default function DiscoverPage() {
                   type="submit"
                   disabled={
                     importLoading ||
+                    isQuotaExhausted ||
                     !importHandle.trim() ||
                     importPlatform === "TikTok" ||
                     importPlatform === "Instagram"
                   }
+                  title={isQuotaExhausted ? "Search quota exhausted" : undefined}
                 >
                   {importLoading ? (
                     <>
                       <RefreshCw size={14} className="spin-icon" /> Querying Platform API…
+                    </>
+                  ) : isQuotaExhausted ? (
+                    <>
+                      <Lock size={14} /> Search Limit Reached
                     </>
                   ) : (
                     <>

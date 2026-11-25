@@ -169,10 +169,10 @@ export default function ListsPage() {
         </div>
       </div>
 
-      {/* Demo Fixtures Notice for Visitors / Unauthenticated Users */}
+      {/* Guest Preview Read-Only Notice */}
       {isGuest && (
         <div
-          className="demo-fixtures-banner"
+          className="guest-readonly-banner"
           style={{
             display: "flex",
             alignItems: "flex-start",
@@ -274,23 +274,6 @@ export default function ListsPage() {
                 >
                   <Bookmark size={14} />
                   <span>{list.name}</span>
-                  {list.id === "list-default-shortlist" && (
-                    <span
-                      style={{
-                        fontSize: "9px",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        padding: "1px 5px",
-                        borderRadius: 4,
-                        background: "#fef3c7",
-                        color: "#92400e",
-                        marginLeft: "auto",
-                        marginRight: 6,
-                      }}
-                    >
-                      Fixture
-                    </span>
-                  )}
                   <span className="list-item-count">{list.creatorIds.length}</span>
                 </button>
               ))}
@@ -299,10 +282,12 @@ export default function ListsPage() {
             {!lists.length && !isCreating && (
               <div className="mini-empty">
                 <FolderPlus size={20} />
-                <span>No lists yet</span>
-                <button onClick={() => setIsCreating(true)} type="button">
-                  Create a list
-                </button>
+                <span>{isGuest ? "Sign in to save shortlists" : "No lists yet"}</span>
+                {!isGuest && (
+                  <button onClick={() => setIsCreating(true)} type="button">
+                    Create a list
+                  </button>
+                )}
               </div>
             )}
           </aside>
@@ -568,15 +553,32 @@ export default function ListsPage() {
                   <span className="empty-icon">
                     <FolderPlus size={20} />
                   </span>
-                  <strong>Create a campaign shortlist</strong>
-                  <p>Organize creators by brand, niche, or campaign timeline.</p>
-                  <button
-                    className="button button-primary button-sm"
-                    onClick={() => setIsCreating(true)}
-                    type="button"
-                  >
-                    <Plus size={13} /> Create a list
-                  </button>
+                  <strong>
+                    {isGuest ? "No saved shortlists in guest preview" : "Create a campaign shortlist"}
+                  </strong>
+                  <p>
+                    {isGuest
+                      ? "Sign in with a free account to organize saved creators by brand, niche, or campaign timeline."
+                      : "Organize creators by brand, niche, or campaign timeline."}
+                  </p>
+                  {isGuest ? (
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                      <Link href="/auth" className="button button-primary button-sm">
+                        Sign In / Create Account
+                      </Link>
+                      <Link href="/discover" className="button button-secondary button-sm">
+                        Explore Live Discovery
+                      </Link>
+                    </div>
+                  ) : (
+                    <button
+                      className="button button-primary button-sm"
+                      onClick={() => setIsCreating(true)}
+                      type="button"
+                    >
+                      <Plus size={13} /> Create a list
+                    </button>
+                  )}
                 </div>
               </div>
             )}

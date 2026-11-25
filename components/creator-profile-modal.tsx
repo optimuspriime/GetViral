@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, X, CheckCircle2 } from "lucide-react";
 import { useProspects } from "@/components/data-provider";
 import type { Creator, PlatformAccount, MetricSnapshot } from "@/lib/model";
 import { getCountryFlag } from "@/lib/country-detector";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 
 const CATEGORIES = [
   "Gaming",
@@ -48,6 +49,9 @@ const LANGUAGES = [
 export function CreatorProfileModal() {
   const router = useRouter();
   const { creatorModalOpen, setCreatorModalOpen, addCustomCreator, showToast } = useProspects();
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useDialogAccessibility(creatorModalOpen, () => setCreatorModalOpen(false), dialogRef);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -334,9 +338,11 @@ export function CreatorProfileModal() {
       onClick={() => setCreatorModalOpen(false)}
       role="dialog"
       aria-modal="true"
-      aria-label="Create Your Creator Profile"
+      aria-labelledby="creator-profile-modal-title"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="creator-modal-card"
         onClick={(e) => e.stopPropagation()}
       >
@@ -346,7 +352,7 @@ export function CreatorProfileModal() {
               <Sparkles size={13} />
               <span>CREATOR ONBOARDING STUDIO</span>
             </span>
-            <h2>Create or Claim Your Creator Profile</h2>
+            <h2 id="creator-profile-modal-title">Create or Claim Your Creator Profile</h2>
             <p>
               Not indexed by the platform APIs yet? Publish your verified handle, metrics, and business email to get discovered by brands and sponsors.
             </p>

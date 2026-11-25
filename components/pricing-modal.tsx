@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check, X, Zap, Shield, ArrowRight } from "lucide-react";
 import { useProspects } from "@/components/data-provider";
 import { SUBSCRIPTION_TIERS } from "@/lib/subscription";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 
 export function PricingModal() {
   const {
@@ -15,6 +16,15 @@ export function PricingModal() {
   } = useProspects();
 
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useDialogAccessibility(
+    pricingModalOpen,
+    () => setPricingModalOpen(false),
+    dialogRef,
+    closeButtonRef,
+  );
 
   if (!pricingModalOpen) return null;
 
@@ -24,9 +34,11 @@ export function PricingModal() {
       onClick={() => setPricingModalOpen(false)}
       role="dialog"
       aria-modal="true"
-      aria-label="Subscription and Search Quota Plans"
+      aria-labelledby="pricing-modal-title"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="pricing-modal-card"
         onClick={(e) => e.stopPropagation()}
       >
@@ -37,7 +49,7 @@ export function PricingModal() {
               <Zap size={13} className="text-amber" />
               <span>SUBSCRIPTION PLANS & SEARCH QUOTAS</span>
             </span>
-            <h2>Choose the Right Plan for Your Scout Operations</h2>
+            <h2 id="pricing-modal-title">Choose the Right Plan for Your Scout Operations</h2>
             <p>
               {isGuest ? "Guest Preview Quota: " : "Current Quota: "}
               <strong>
@@ -54,6 +66,7 @@ export function PricingModal() {
           </div>
 
           <button
+            ref={closeButtonRef}
             type="button"
             className="icon-button modal-close-btn"
             onClick={() => setPricingModalOpen(false)}

@@ -125,7 +125,7 @@ function isValidCreator(value: unknown): value is Creator {
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [creators, setCreators] = useState<Creator[]>([]);
-  const [lists, setLists] = useState<ProspectList[]>([INITIAL_DEFAULT_LIST]);
+  const [lists, setLists] = useState<ProspectList[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([GUEST_WORKSPACE]);
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace>(GUEST_WORKSPACE);
   const [hydrated, setHydrated] = useState(false);
@@ -247,7 +247,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           setWorkspaces([GUEST_WORKSPACE]);
           setActiveWorkspaceState(GUEST_WORKSPACE);
           setCreators([]);
-          setLists([INITIAL_DEFAULT_LIST]);
+          setLists([]);
           setIsAdmin(false);
         } else {
           const defaultWs = getInitialUserWorkspace(userEmail, false);
