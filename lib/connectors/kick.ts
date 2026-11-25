@@ -1,7 +1,7 @@
 import "server-only";
 import type { ConnectorResponse, NormalizedCreator, PlatformCapability } from "./types";
 import { searchCache } from "./cache";
-import { detectCreatorCountry } from "@/lib/country-detector";
+import { detectCreatorCountry, resolveCountryCode } from "@/lib/country-detector";
 
 export const kickCapabilities: PlatformCapability = {
   platform: "Kick",
@@ -135,7 +135,9 @@ export async function lookupKick(
     const viewerCount = data.livestream?.viewer_count ?? (isLive ? 50 : null);
     const categoryName = data.livestream?.categories?.[0]?.name || data.category?.name || "Just Chatting";
     const username = data.user?.username || data.slug || cleanSlug;
-    const country = detectCreatorCountry(cleanSlug, username, data.user?.bio);
+    const country =
+      resolveCountryCode(data.user?.country) ||
+      detectCreatorCountry(cleanSlug, username, data.user?.bio);
 
     const emailMatch = (data.user?.bio ?? "").match(
       /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,

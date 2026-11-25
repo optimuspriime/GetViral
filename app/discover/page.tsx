@@ -378,11 +378,13 @@ export default function DiscoverPage() {
 
     const filtered = all.filter(({ creator, account }) => {
       const q = filters.query.trim().toLowerCase();
+      const qNormalized = q.replace(/^@+/, "");
       const matchesText =
         !q ||
-        [creator.name, account.handle, creator.bio, creator.category ?? ""].some((value) =>
-          value.toLowerCase().includes(q),
-        );
+        [creator.name, account.handle, creator.bio, creator.category ?? ""].some((value) => {
+          const lower = value.toLowerCase();
+          return lower.includes(q) || (Boolean(qNormalized) && lower.includes(qNormalized));
+        });
       const followers = currentFollowers(account);
       const reach = currentReach(account);
       const live = reachMetricName(account) === "avg_live_viewers" ? reach : null;

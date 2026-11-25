@@ -61,14 +61,25 @@ export async function GET(request: Request) {
     }
 
     if (result.status === "unconfigured") {
+      const publicError = session.isAdmin
+        ? result.message || `${platform} connector is not configured with required API credentials.`
+        : `${platform} channel lookup is temporarily pending activation.`;
+      const publicCapabilities = session.isAdmin
+        ? result.capabilities
+        : {
+            ...result.capabilities,
+            authorizationRequirement: result.capabilities.requiresApiKey
+              ? `Managed server integration for ${platform}.`
+              : result.capabilities.authorizationRequirement,
+          };
       const res = NextResponse.json({
         success: false,
         platform,
         status: "unconfigured",
         chargeSearch: false,
         subscription: quotaCheck.subscription,
-        error: result.message || `${platform} connector is not configured with required API credentials.`,
-        capabilities: result.capabilities,
+        error: publicError,
+        capabilities: publicCapabilities,
       }, { status: 200 });
       attachGuestCookie(res, session);
       attachQuotaCookie(res, session, quotaCheck.subscription);

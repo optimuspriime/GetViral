@@ -142,11 +142,38 @@ export async function GET(request: Request) {
       ? await consumeServerQuota(session)
       : quotaCheck.subscription;
 
+    // Sanitize internal server configuration details for non-admin callers
+    const publicStatuses = session.isAdmin
+      ? federated.connectorStatuses
+      : Object.fromEntries(
+          (
+            Object.entries(federated.connectorStatuses) as [
+              Platform,
+              typeof federated.connectorStatuses[Platform],
+            ][]
+          ).map(([p, statusObj]) => [
+            p,
+            {
+              ...statusObj,
+              message:
+                statusObj.status === "unconfigured"
+                  ? `${p} live search is temporarily pending activation.`
+                  : statusObj.message,
+              capabilities: {
+                ...statusObj.capabilities,
+                authorizationRequirement: statusObj.capabilities.requiresApiKey
+                  ? `Managed server integration for ${p}.`
+                  : statusObj.capabilities.authorizationRequirement,
+              },
+            },
+          ]),
+        );
+
     const response = NextResponse.json({
       query: q,
       total: filtered.length,
       creators: filtered,
-      connectorStatuses: federated.connectorStatuses,
+      connectorStatuses: publicStatuses,
       succeededProviders,
       failedProviders,
       unconfiguredProviders,

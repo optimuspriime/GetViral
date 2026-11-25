@@ -453,8 +453,8 @@ h1 { color: #202a25; font: 700 26px/1.25 "Manrope", sans-serif; letter-spacing: 
 .icon-button:disabled { opacity: 0.45; cursor: not-allowed; }
 .icon-button:disabled:hover { background: #f7f9f7; border-color: transparent; color: #748178; }
 
-/* Hide keyboard shortcut hint on touch devices */
-@media (hover: none), (pointer: coarse) {
+/* Hide keyboard shortcut hint on touch-primary devices */
+@media (hover: none) and (pointer: coarse) {
   .top-search-kbd {
     display: none !important;
   }
@@ -1378,8 +1378,8 @@ option { background: #1b1935; color: #f2efff; }
 .dashboard-tab:hover { background: #e8f3e5; color: #2d6e3d; }
 .dashboard-tab.selected { border-bottom-color: #4a9253; color: #2e7040; }
 .auth-toggle { color: #34794a; }
-@media (max-width: 1260px) {
-  .top-workspace-switch { display: none; }
+@media (max-width: 1120px) and (min-width: 901px) {
+  .top-workspace-switch .workspace-copy small { display: none; }
 }
 .primary-nav { gap: 7px; }
 .primary-nav .nav-link { gap: 12px; min-height: 51px; padding: 6px 9px; }
@@ -1681,8 +1681,8 @@ option { background: #f6fbf4; color: #274c31; }
 @media (min-width: 1700px) {
   .page-content { padding-left: 56px; padding-right: 56px; }
 }
-/* Desktop Compact Nav for 1025px to 1440px (e.g. 1024px-1380px) to prevent overlap & clipping */
-@media (max-width: 1440px) and (min-width: 1025px) {
+/* Desktop Compact Nav for 901px to 1440px (prevents collapsing nav at 1024px-1280px) */
+@media (max-width: 1440px) and (min-width: 901px) {
   .app-topbar {
     gap: 8px;
     padding-left: 16px;
@@ -1715,13 +1715,17 @@ option { background: #f6fbf4; color: #274c31; }
     justify-content: flex-end;
   }
   .top-search {
-    width: 34px;
+    width: auto;
     height: 34px;
-    padding: 0;
+    padding: 0 9px;
     justify-content: center;
   }
-  .top-search-label, .top-search kbd {
+  .top-search-label {
     display: none !important;
+  }
+  .top-search kbd {
+    display: inline-block;
+    margin-left: 2px;
   }
   .creator-btn-text {
     display: none !important;
@@ -1747,20 +1751,20 @@ option { background: #f6fbf4; color: #274c31; }
   }
 }
 
-@media (max-width: 1260px) and (min-width: 1025px) {
-  .top-workspace-switch .workspace-copy {
+@media (max-width: 1180px) and (min-width: 901px) {
+  .top-workspace-switch .workspace-copy small {
     display: none !important;
   }
   .top-workspace-switch {
-    padding: 4px 6px;
+    padding: 4px 8px;
   }
   .top-nav .nav-link span:last-child {
     font-size: 10.5px;
   }
 }
 
-/* Tablet & Mobile Breakpoint (1024px and below) */
-@media (max-width: 1024px) {
+/* Tablet & Mobile Breakpoint (900px and below) */
+@media (max-width: 900px) {
   .app-topbar { gap: 10px; grid-template-columns: max-content 38px minmax(0, 1fr); height: 68px; }
   .mobile-menu { display: inline-flex; flex: 0 0 38px; grid-column: 2; grid-row: 1; }
   .app-topbar > .brand { grid-column: 1; grid-row: 1; }
@@ -3478,6 +3482,7 @@ option { background: #f6fbf4; color: #274c31; }
   color: #345c3e;
 }
 .quota-status-block {
+  margin: 14px 20px 20px;
   padding: 14px;
   background: #fbfdfb;
   border-radius: 12px;
@@ -3495,8 +3500,8 @@ option { background: #f6fbf4; color: #274c31; }
   margin-top: 8px;
 }
 
-/* Tablet Layout Optimization */
-@media (max-width: 1024px) {
+/* Mobile Layout Optimization */
+@media (max-width: 900px) {
   .app-topbar {
     padding: 0 14px;
     gap: 8px;
@@ -3829,6 +3834,83 @@ option { background: #f6fbf4; color: #274c31; }
   background: #238636;
   border-color: #238636;
   color: #ffffff;
+}
+
+/* ========================================================
+   Strict Responsive Containment & Mobile Discover Fix
+   ======================================================== */
+html, body, .app-frame, .main-area, .page-content {
+  max-width: 100%;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+.page-heading,
+.page-heading-actions,
+.discovery-controls,
+.search-field.discovery-search,
+.filters-layout,
+.filters-layout > *,
+.results-card,
+.discovery-table-wrap,
+.discovery-mobile-cards {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.search-field.discovery-search input {
+  min-width: 0;
+  flex: 1 1 130px;
+}
+
+@media (max-width: 900px) {
+  .page-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .page-heading-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .filters-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .discovery-controls {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .search-field.discovery-search {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    gap: 6px;
+    height: auto;
+  }
+  .platform-select-wrap {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+    width: 100%;
+  }
+  .mobile-filter-toggle {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+    width: 100%;
+    justify-content: center;
+  }
+  .search-submit-btn,
+  .search-quota-pill {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .discovery-table-wrap {
+    display: none !important;
+  }
+  .discovery-mobile-cards {
+    display: flex !important;
+  }
 }
 
 

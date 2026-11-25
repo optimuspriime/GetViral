@@ -12,6 +12,7 @@ import {
 import { getDefaultSubscription, GUEST_PREVIEW_QUOTA, SUBSCRIPTION_TIERS } from "../lib/subscription";
 import { refreshSavedCreatorsFromConnectors } from "../lib/api-fetcher";
 import { INTEGRATIONS } from "../lib/integrations";
+import { detectCreatorCountry } from "../lib/country-detector";
 
 test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
   await t.test("1. Signed Guest Tokens reject tampering and invalid signatures", () => {
@@ -138,5 +139,12 @@ test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
     assert.equal(tiktok.setup.includes("Meta"), false);
     assert.equal(tiktok.limitation.includes("Meta"), false);
     assert.equal(tiktok.statusNote.includes("Meta"), false);
+  });
+
+  await t.test("9. Country detector returns null for unknown regions instead of defaulting to India", () => {
+    assert.equal(detectCreatorCountry("adinross", "AdinRoss", "Kick streamer"), null);
+    assert.equal(detectCreatorCountry("xqc", "xQc", "Variety stream"), null);
+    assert.equal(detectCreatorCountry("carryminati", "CarryMinati", "Hindi comedy creator"), "India");
+    assert.equal(detectCreatorCountry("creatorusa", "LA Vlog", "Los Angeles, California"), "United States");
   });
 });

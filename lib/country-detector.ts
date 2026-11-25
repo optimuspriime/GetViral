@@ -85,7 +85,7 @@ export function getCountryFlag(countryName: string | null | undefined): string {
   return "🌐";
 }
 
-export function detectCreatorCountry(handle: string, displayName?: string | null, bio?: string | null): string {
+export function detectCreatorCountry(handle: string, displayName?: string | null, bio?: string | null): string | null {
   const text = `${handle} ${displayName || ""} ${bio || ""}`.toLowerCase();
 
   // Known Indian keywords, cities, languages, and creators
@@ -109,6 +109,6 @@ export function detectCreatorCountry(handle: string, displayName?: string | null
   if (/australia|sydney|melbourne|brisbane/i.test(text)) return "Australia";
   if (/united states|america|california|new york|texas|florida|los angeles/i.test(text)) return "United States";
 
-  // Default to India
-  return "India";
+  // Return null when country cannot be inferred cleanly from public metadata
+  return null;
 }
