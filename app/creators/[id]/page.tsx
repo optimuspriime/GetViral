@@ -5,29 +5,127 @@ import {
   ArrowLeft, ArrowUpRight, Bookmark, CircleHelp, Globe2, Mail,
   Check, CheckCircle2, Copy, Sparkles, ExternalLink
 } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useProspects } from "@/components/data-provider";
 import { platformColors, platformMetricLabel } from "@/lib/platforms";
 import { currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
-import type { MetricSnapshot, PlatformAccount } from "@/lib/model";
+import type { Creator, MetricSnapshot, PlatformAccount } from "@/lib/model";
 import { getCountryFlag } from "@/lib/country-detector";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 export default function CreatorProfilePage() {
   const params = useParams<{ id: string }>();
-  const { creators, lists, hydrated, addCreator, removeCreator, createList, showToast } =
+  const searchParams = useSearchParams();
+  const { creators, lists, hydrated, isGuest, addCreator, removeCreator, createList, addCustomCreator, showToast } =
     useProspects();
   const [copied, setCopied] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [selectedObsPlatform, setSelectedObsPlatform] = useState<string>("All");
+  const [transientCreator, setTransientCreator] = useState<Creator | null>(null);
+  const [loadingTransient, setLoadingTransient] = useState(false);
 
-  const creator = creators.find((item) => item.id === params.id);
+  const savedMatch = creators.find((item) => item.id === params.id);
+
+  useEffect(() => {
+    if (savedMatch) return;
+    // Check transient live search session cache first
+    try {
+      const raw = window.sessionStorage.getItem("gv_recent_live_creators_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Creator[];
+        const found = parsed.find((c) => c.id === params.id);
+        if (found) {
+          setTransientCreator(found);
+          return;
+        }
+      }
+    } catch {}
+
+    const platformParam = searchParams.get("platform");
+    const handleParam = searchParams.get("handle");
+    if (platformParam && handleParam) {
+      setLoadingTransient(true);
+      fetch(`/api/lookup?platform=${encodeURIComponent(platformParam)}&handle=${encodeURIComponent(handleParam)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.success && data.creator) {
+            const p = data.creator;
+            const resolved: Creator = {
+              id: p.id || params.id,
+              name: p.name || p.handle,
+              category: p.category || "General",
+              language: p.language || "English",
+              creatorCountry: p.country || null,
+              creatorCountrySource: "Live Platform API",
+              bio: p.bio || `${p.name || p.handle} on ${p.platform}`,
+              avatar: p.avatarUrl || "",
+              businessContact: p.businessContact || null,
+              audienceInsights: [],
+              accounts: [
+                {
+                  id: `acc-${p.id || params.id}`,
+                  platform: p.platform,
+                  handle: p.handle,
+                  profileUrl: p.profileUrl,
+                  activity: p.isLiveStream ? "Live Now" : "Active",
+                  snapshots: [
+                    ...(p.followers !== null && p.followers !== undefined
+                      ? [
+                          {
+                            id: `snap-${p.id}-f`,
+                            metricName: "followers",
+                            value: Number(p.followers),
+                            unit: "count" as const,
+                            collectedAt: p.fetchedAt || data.fetchedAt || new Date().toISOString(),
+                            windowStart: null,
+                            windowEnd: null,
+                            periodLabel: null,
+                            sampleSize: null,
+                            source: data.source || `${p.platform} API`,
+                            status: "public" as const,
+                          },
+                        ]
+                      : []),
+                    ...(p.reach !== null && p.reach !== undefined
+                      ? [
+                          {
+                            id: `snap-${p.id}-r`,
+                            metricName: p.reachMetric || "avg_views",
+                            value: Number(p.reach),
+                            unit: (p.reachMetric === "avg_live_viewers" ? "count" : "views") as "count" | "views",
+                            collectedAt: p.fetchedAt || data.fetchedAt || new Date().toISOString(),
+                            windowStart: null,
+                            windowEnd: null,
+                            periodLabel: p.isLiveStream ? "Current live stream" : "Recent content",
+                            sampleSize: 10,
+                            source: data.source || `${p.platform} API`,
+                            status: "public" as const,
+                          },
+                        ]
+                      : []),
+                  ],
+                },
+              ],
+            };
+            setTransientCreator(resolved);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingTransient(false));
+    }
+  }, [savedMatch, params.id, searchParams]);
+
+  const creator = savedMatch ?? transientCreator;
   if (!creator) {
     return (
       <div className="card">
         <div className="empty-state">
-          <strong>Creator profile not found</strong>
-          <p>This profile is not currently in your active workspace catalog.</p>
+          <strong>{loadingTransient ? "Loading live creator profile…" : "Creator profile not found"}</strong>
+          <p>
+            {loadingTransient
+              ? "Querying live platform API for channel details."
+              : "This profile is not currently in your active workspace catalog."}
+          </p>
           <Link href="/discover" className="button button-secondary button-sm">
             Back to discovery
           </Link>
@@ -40,11 +138,16 @@ export default function CreatorProfilePage() {
   const saved = lists.some((list) => list.creatorIds.includes(creatorId));
 
   function toggleSave() {
-    if (!hydrated) return;
+    if (!hydrated || !creator) return;
+    if (isGuest) {
+      showToast("Sign in required: Guest preview sessions cannot save creators to CRM shortlists.", "error");
+      return;
+    }
     const targetList = lists[0] || { id: createList("Priority Shortlist") };
     if (saved) {
       removeCreator(targetList.id, creatorId);
     } else {
+      addCustomCreator(creator);
       addCreator(targetList.id, creatorId);
     }
   }
@@ -142,7 +245,7 @@ export default function CreatorProfilePage() {
                     <Mail size={13} className="inline-icon text-green" /> Direct Business Email:
                   </div>
                   <a
-                    href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20Mosaic`}
+                    href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20GetViral`}
                     className="profile-email-link"
                     title={`Send partnership email to ${creator.businessContact.email}`}
                   >
@@ -160,7 +263,7 @@ export default function CreatorProfilePage() {
                     <span>{copiedEmail ? "Copied" : "Copy Email"}</span>
                   </button>
                   <a
-                    href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20Mosaic`}
+                    href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20GetViral`}
                     className="button button-sm button-primary contact-send-btn"
                   >
                     <Mail size={13} /> Send Email
@@ -173,7 +276,7 @@ export default function CreatorProfilePage() {
           <div className="profile-head-actions">
             {creator.businessContact?.email ? (
               <a
-                href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20Mosaic`}
+                href={`mailto:${creator.businessContact.email}?subject=Partnership%20Inquiry%20via%20GetViral`}
                 className="button button-primary profile-email-cta"
                 title={`Send email directly to ${creator.businessContact.email}`}
               >
@@ -183,12 +286,17 @@ export default function CreatorProfilePage() {
             ) : null}
             <button
               className={`button ${saved ? "button-secondary saved-btn" : "button-secondary"}`}
-              disabled={!hydrated}
+              disabled={!hydrated || isGuest}
+              title={
+                isGuest
+                  ? "Sign in required: Guest preview sessions cannot save creators to CRM shortlists"
+                  : undefined
+              }
               onClick={toggleSave}
               type="button"
             >
               <Bookmark size={15} fill={saved ? "currentColor" : "none"} />
-              {saved ? "Saved in Shortlist" : "Save to Shortlist"}
+              {saved ? "Saved in Shortlist" : isGuest ? "Sign In to Save" : "Save to Shortlist"}
             </button>
           </div>
         </div>

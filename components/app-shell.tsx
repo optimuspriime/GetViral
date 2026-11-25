@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   ArrowUpRight, Bookmark, Check, ChevronDown, Compass, LayoutDashboard,
   LogOut, LogIn, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw, Zap
@@ -24,7 +24,6 @@ const navigation = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const {
     lists,
     workspaces,
@@ -36,6 +35,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     syncAllPlatforms,
     subscription,
     userRole,
+    userEmail,
+    isGuest,
     setPricingModalOpen,
     setCreatorModalOpen,
   } = useProspects();
@@ -46,40 +47,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isCreatingWs, setIsCreatingWs] = useState(false);
   const [newWsName, setNewWsName] = useState("");
-  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
   const savedCount = new Set(lists.flatMap((list) => list.creatorIds)).size;
-  const isGuest = !userEmail || userEmail === "guest@mosaicscout.com" || userEmail.startsWith("guest");
-
-  useEffect(() => {
-    const client = getSupabaseBrowserClient();
-    if (client) {
-      client.auth.getUser().then(({ data }) => {
-        if (data.user?.email) {
-          setUserEmail(data.user.email);
-        } else if (typeof window !== "undefined") {
-          const localUser = window.localStorage.getItem("mosaic_user_session");
-          if (localUser) {
-            try {
-              const parsed = JSON.parse(localUser);
-              if (parsed?.email) setUserEmail(parsed.email);
-            } catch {}
-          }
-        }
-      });
-    } else if (typeof window !== "undefined") {
-      const localUser = window.localStorage.getItem("mosaic_user_session");
-      if (localUser) {
-        try {
-          const parsed = JSON.parse(localUser);
-          if (parsed?.email) setUserEmail(parsed.email);
-        } catch {}
-      }
-    }
-  }, []);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -124,10 +96,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.localStorage.removeItem("mosaic_user_session");
       document.cookie = "mosaic_user_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     }
-    setUserEmail(null);
     showToast("Signed out successfully", "info");
     setAccountMenuOpen(false);
-    router.push("/auth");
+    window.location.assign("/auth");
   }
 
   if (pathname.startsWith("/auth")) {
@@ -255,7 +226,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }
               void syncAllPlatforms();
             }}
-            disabled={isSyncing}
+            disabled={isGuest || isSyncing}
             title={
               isGuest
                 ? "Sign in as workspace owner or admin to trigger live platform sync"
@@ -394,18 +365,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setAccountMenuOpen(!accountMenuOpen)}
               type="button"
             >
-              {userEmail ? userEmail.charAt(0).toUpperCase() : "A"}
+              {isGuest ? "G" : userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
             </button>
 
             {accountMenuOpen && (
               <div className="account-dropdown-menu">
                 <div className="account-menu-head">
                   <div className="account-avatar-large">
-                    {isGuest ? "G" : userEmail ? userEmail.charAt(0).toUpperCase() : "A"}
+                    {isGuest ? "G" : userEmail ? userEmail.charAt(0).toUpperCase() : "U"}
                   </div>
                   <div className="account-info">
-                    <strong>{isGuest ? "Guest Explorer" : userEmail ? userEmail.split("@")[0] : "Alex Turner"}</strong>
-                    <small>{isGuest ? "Free Trial Workspace (50 searches)" : userEmail || "alex.turner@getviral.io"}</small>
+                    <strong>{isGuest ? "Guest Explorer" : userEmail ? userEmail.split("@")[0] : "Workspace User"}</strong>
+                    <small>
+                      {isGuest
+                        ? `Guest Sandbox (${subscription.searchesRemaining} / ${subscription.totalQuota} searches)`
+                        : userEmail || "Authenticated Workspace"}
+                    </small>
                   </div>
                 </div>
 

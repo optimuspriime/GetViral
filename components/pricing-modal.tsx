@@ -8,6 +8,7 @@ import { SUBSCRIPTION_TIERS } from "@/lib/subscription";
 export function PricingModal() {
   const {
     subscription,
+    isGuest,
     upgradeSubscription,
     pricingModalOpen,
     setPricingModalOpen,
@@ -130,11 +131,14 @@ export function PricingModal() {
                       ? "primary glow"
                       : "secondary"
                   }`}
-                  disabled={isCurrent}
+                  disabled={isCurrent || isGuest}
+                  title={isGuest ? "Sign in to change your workspace plan" : undefined}
                   onClick={() => upgradeSubscription(tier.id)}
                 >
                   {isCurrent ? (
                     <span>Current Active Plan</span>
+                  ) : isGuest ? (
+                    <span>Sign In to Select</span>
                   ) : (
                     <>
                       <span>Select {tier.name}</span>
@@ -151,7 +155,11 @@ export function PricingModal() {
         <div className="pricing-footer">
           <div className="guarantee-item">
             <Shield size={16} className="text-green" />
-            <span>Instant activation · Cancel or switch plans anytime · Zero lock-in</span>
+            <span>
+              {isGuest
+                ? "Sign in with a workspace account to manage plans · Search quotas are enforced server-side"
+                : "Billing integration (Stripe) required for upgrades above the 50-search Free Trial quota"}
+            </span>
           </div>
           <button
             type="button"

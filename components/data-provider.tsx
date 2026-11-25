@@ -1,13 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Creator, ProspectList, ProspectStatus } from "@/lib/model";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   type SubscriptionPlanId,
   type UserRole,
   type UserSubscriptionState,
-  SUBSCRIPTION_TIERS,
   getDefaultSubscription,
   loadUserSubscription,
   saveUserSubscription,
@@ -35,6 +34,7 @@ type Store = {
   hydrated: boolean;
   storageError: string | null;
   ownerId: string | null;
+  userEmail: string | null;
   isGuest: boolean;
   isAuthenticated: boolean;
   addCreator: (listId: string, creatorId: string) => void;
@@ -57,6 +57,7 @@ type Store = {
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
   upgradeSubscription: (planId: SubscriptionPlanId) => void;
+  syncServerQuota: (sub: UserSubscriptionState) => void;
   hasAvailableQuota: () => boolean;
   deductSearch: () => boolean;
   pricingModalOpen: boolean;
@@ -65,9 +66,9 @@ type Store = {
   setCreatorModalOpen: (open: boolean) => void;
 };
 
-const STORAGE_KEY = "mosaic-prospect-lists-v4";
-const CREATOR_STORAGE_KEY = "mosaic-saved-creators-v4";
-const WORKSPACE_STORAGE_KEY = "mosaic-workspaces-v4";
+const STORAGE_KEY = "gv-prospect-lists-v5";
+const CREATOR_STORAGE_KEY = "gv-saved-creators-v5";
+const WORKSPACE_STORAGE_KEY = "gv-workspaces-v5";
 const StoreContext = createContext<Store | null>(null);
 
 const DEFAULT_WORKSPACES: Workspace[] = [
@@ -118,16 +119,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [activeWorkspace, setActiveWorkspaceState] = useState<Workspace>(DEFAULT_WORKSPACES[0]);
   const [hydrated, setHydrated] = useState(false);
   const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  // Subscription & Role State (deterministic initial state to guarantee zero SSR hydration mismatches)
+  // Deterministic SSR initial state; synchronized dynamically with /api/quota
   const [subscription, setSubscription] = useState<UserSubscriptionState>(() => getDefaultSubscription("free"));
   const [userRole, setUserRoleState] = useState<UserRole>("viewer");
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);
+
+  const listSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const creatorsRef = useRef<Creator[]>([]);
+  creatorsRef.current = creators;
 
   const isGuest = useMemo(() => {
     if (!ownerId) return true;
@@ -150,177 +156,234 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }, 3200);
   }, []);
 
+  // Resolve verified identity from Supabase Auth (single source of truth)
   useEffect(() => {
     let active = true;
-    async function resolveOwner() {
-      // Check localStorage for active session
-      if (typeof window !== "undefined") {
-        const localUser = window.localStorage.getItem("mosaic_user_session");
-        if (!localUser) {
-          const guestSession = {
-            email: "guest@getviral.io",
-            name: "Guest Explorer (Demo)",
-            role: "viewer",
-            isGuest: true,
-          };
-          window.localStorage.setItem("mosaic_user_session", JSON.stringify(guestSession));
-          document.cookie = "mosaic_user_session=guest%40getviral.io; path=/; max-age=2592000; SameSite=Lax";
-        }
-      }
+    const client = getSupabaseBrowserClient();
 
-      const client = getSupabaseBrowserClient();
+    async function resolveIdentity() {
       if (!client) {
         if (active) {
-          if (typeof window !== "undefined") {
-            const localUser = window.localStorage.getItem("mosaic_user_session");
-            if (localUser) {
-              try {
-                const parsed = JSON.parse(localUser);
-                if (parsed.email) {
-                  setOwnerId(parsed.email);
-                  return;
-                }
-              } catch {}
-            }
-          }
           setOwnerId("guest@getviral.io");
+          setUserEmail(null);
         }
         return;
       }
 
       try {
-        const { data } = await client.auth.getUser();
-        if (active) {
-          if (data.user?.id) {
-            setOwnerId(data.user.id);
-          } else if (typeof window !== "undefined") {
-            const localUser = window.localStorage.getItem("mosaic_user_session");
-            if (localUser) {
-              try {
-                const parsed = JSON.parse(localUser);
-                if (parsed.email) {
-                  setOwnerId(parsed.email);
-                  return;
-                }
-              } catch {}
-            }
-            setOwnerId("guest@getviral.io");
-          } else {
-            setOwnerId("guest@getviral.io");
+        const { data, error } = await client.auth.getUser();
+        if (!active) return;
+        if (!error && data?.user?.id) {
+          setOwnerId(data.user.id);
+          setUserEmail(data.user.email ?? null);
+        } else {
+          // Signed-out visitor: ensure stale unsigned session metadata cannot leak
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("mosaic_user_session");
           }
+          setOwnerId("guest@getviral.io");
+          setUserEmail(null);
         }
       } catch {
-        if (active) setOwnerId("guest@getviral.io");
+        if (active) {
+          setOwnerId("guest@getviral.io");
+          setUserEmail(null);
+        }
       }
     }
 
-    void resolveOwner();
+    void resolveIdentity();
+
+    if (client) {
+      const { data: authSub } = client.auth.onAuthStateChange((_event: string, session: { user?: { id?: string; email?: string | null } } | null) => {
+        if (!active) return;
+        if (session?.user?.id) {
+          setOwnerId(session.user.id);
+          setUserEmail(session.user.email ?? null);
+        } else {
+          setOwnerId("guest@getviral.io");
+          setUserEmail(null);
+        }
+      });
+
+      return () => {
+        active = false;
+        authSub?.subscription?.unsubscribe();
+      };
+    }
+
     return () => {
       active = false;
     };
   }, []);
 
-  // Hydrate from localStorage & Database
+  // Hydrate account-scoped data + authoritative server quota
   useEffect(() => {
     if (!ownerId) return;
-    try {
-      // Workspaces
-      const savedWs = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
-      if (savedWs) {
-        const parsed = JSON.parse(savedWs);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setWorkspaces(parsed);
-          setActiveWorkspaceState(parsed[0]);
-        }
-      }
+    let active = true;
 
-      // Lists
-      const savedLists = window.localStorage.getItem(`${STORAGE_KEY}:${ownerId}`);
-      if (savedLists) {
-        const parsed = JSON.parse(savedLists);
-        if (isValidLists(parsed) && parsed.length > 0) {
-          setLists(parsed);
+    async function hydrateAccount() {
+      try {
+        // 1. Workspaces (scoped by ownerId)
+        const savedWs = window.localStorage.getItem(`${WORKSPACE_STORAGE_KEY}:${ownerId}`);
+        if (savedWs) {
+          const parsed = JSON.parse(savedWs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setWorkspaces(parsed);
+            setActiveWorkspaceState(parsed[0]);
+          } else {
+            setWorkspaces(DEFAULT_WORKSPACES);
+            setActiveWorkspaceState(DEFAULT_WORKSPACES[0]);
+          }
+        } else {
+          setWorkspaces(DEFAULT_WORKSPACES);
+          setActiveWorkspaceState(DEFAULT_WORKSPACES[0]);
         }
-      }
 
-      // Saved Creators: Guests see an empty sandbox (0 saved prospects)
-      if (isGuest) {
-        setCreators([]);
-      } else {
-        // Saved Creators in Browser Storage for signed-in user
-        const savedCreators = window.localStorage.getItem(`${CREATOR_STORAGE_KEY}:${ownerId}`);
-        let localSaved: Creator[] = [];
-        if (savedCreators) {
-          try {
-            const parsed = JSON.parse(savedCreators);
-            if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
-              localSaved = parsed;
+        // 2. Role & instant cached quota (soon replaced by authoritative /api/quota)
+        setUserRoleState(loadUserRole(ownerId));
+        setSubscription(loadUserSubscription(ownerId));
+
+        // 3. Lists & Saved Creators (strictly isolated per account)
+        if (isGuest) {
+          setCreators([]);
+          setLists([INITIAL_DEFAULT_LIST]);
+        } else {
+          const savedLists = window.localStorage.getItem(`${STORAGE_KEY}:${ownerId}`);
+          if (savedLists) {
+            try {
+              const parsed = JSON.parse(savedLists);
+              if (isValidLists(parsed) && parsed.length > 0) {
+                setLists(parsed);
+              } else {
+                setLists([INITIAL_DEFAULT_LIST]);
+              }
+            } catch {
+              setLists([INITIAL_DEFAULT_LIST]);
             }
-          } catch {}
+          } else {
+            setLists([INITIAL_DEFAULT_LIST]);
+          }
+
+          const savedCreators = window.localStorage.getItem(`${CREATOR_STORAGE_KEY}:${ownerId}`);
+          let localSaved: Creator[] = [];
+          if (savedCreators) {
+            try {
+              const parsed = JSON.parse(savedCreators);
+              if (Array.isArray(parsed) && parsed.every(isValidCreator)) {
+                localSaved = parsed;
+              }
+            } catch {}
+          }
+          setCreators(localSaved);
+
+          // Load authoritative account data from Supabase via /api/lists
+          fetch("/api/lists")
+            .then((res) => res.json())
+            .then((data) => {
+              if (!active || data?.isGuest) return;
+              if (Array.isArray(data?.lists) && data.lists.length > 0) {
+                setLists(data.lists);
+              }
+              if (Array.isArray(data?.creators)) {
+                const dbMap = new Map<string, Creator>();
+                data.creators.forEach((c: Creator) => dbMap.set(c.id, c));
+                // Merge any referenced local creators matching user lists
+                const referencedIds = new Set<string>(
+                  (data.lists || []).flatMap((l: ProspectList) => l.creatorIds),
+                );
+                localSaved.forEach((c) => {
+                  if (referencedIds.has(c.id) && !dbMap.has(c.id)) {
+                    dbMap.set(c.id, c);
+                  }
+                });
+                setCreators(Array.from(dbMap.values()));
+              }
+            })
+            .catch(() => {});
         }
 
-        // Fetch saved creators from Database for signed-in user
-        fetch("/api/creators")
+        // 4. Authoritative Server Quota Sync
+        fetch("/api/quota")
           .then((res) => res.json())
-          .then((data) => {
-            const dbList: Creator[] = Array.isArray(data?.creators) ? data.creators : [];
-            // Merge local and db creators
-            const map = new Map<string, Creator>();
-            localSaved.forEach((c) => map.set(c.id, c));
-            dbList.forEach((c) => map.set(c.id, c));
-            setCreators(Array.from(map.values()));
+          .then((qData) => {
+            if (!active) return;
+            if (qData?.subscription && typeof qData.subscription.searchesRemaining === "number") {
+              setSubscription(qData.subscription);
+              saveUserSubscription(qData.subscription, ownerId);
+            }
           })
-          .catch(() => {
-            setCreators(localSaved);
-          });
+          .catch(() => {});
+      } catch (e) {
+        console.warn("Could not hydrate account state:", e);
+      } finally {
+        if (active) setHydrated(true);
       }
-
-      // Subscription & Role
-      setSubscription(loadUserSubscription(ownerId));
-      setUserRoleState(loadUserRole(ownerId));
-    } catch (e) {
-      console.warn("Could not load from localStorage:", e);
-    } finally {
-      setHydrated(true);
     }
+
+    void hydrateAccount();
+    return () => {
+      active = false;
+    };
   }, [ownerId, isGuest]);
 
-  // Persist Lists
+  // Helper to persist signed-in user's lists & referenced creators cleanly to Supabase
+  const scheduleServerListSync = useCallback(
+    (nextLists: ProspectList[], extraCreators?: Creator[]) => {
+      if (isGuest || !ownerId) return;
+      if (listSyncTimeoutRef.current) clearTimeout(listSyncTimeoutRef.current);
+      listSyncTimeoutRef.current = setTimeout(() => {
+        const allAvailable = [...(extraCreators || []), ...creatorsRef.current];
+        const neededIds = new Set(nextLists.flatMap((l) => l.creatorIds));
+        const referencedCreators = Array.from(
+          new Map(allAvailable.filter((c) => neededIds.has(c.id)).map((c) => [c.id, c])).values(),
+        );
+        fetch("/api/lists", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lists: nextLists,
+            creators: referencedCreators,
+          }),
+        }).catch(() => {});
+      }, 300);
+    },
+    [isGuest, ownerId],
+  );
+
+  // Persist account-scoped Lists in localStorage
   useEffect(() => {
-    if (!hydrated || !ownerId) return;
+    if (!hydrated || !ownerId || isGuest) return;
     try {
       window.localStorage.setItem(`${STORAGE_KEY}:${ownerId}`, JSON.stringify(lists));
     } catch {
       setStorageError("Unable to persist changes in browser storage.");
     }
-  }, [hydrated, lists, ownerId]);
+  }, [hydrated, lists, ownerId, isGuest]);
 
-  // Persist Workspaces
+  // Persist account-scoped Workspaces in localStorage
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !ownerId || isGuest) return;
     try {
-      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspaces));
-    } catch {
-      // Ignore
-    }
-  }, [hydrated, workspaces]);
+      window.localStorage.setItem(`${WORKSPACE_STORAGE_KEY}:${ownerId}`, JSON.stringify(workspaces));
+    } catch {}
+  }, [hydrated, workspaces, ownerId, isGuest]);
 
-  // Persist saved custom creators
+  // Persist account-scoped Creators in localStorage (bugfix: always key by ownerId, never share globally)
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !ownerId || isGuest) return;
     try {
+      const key = `${CREATOR_STORAGE_KEY}:${ownerId}`;
       if (creators.length > 0) {
-        window.localStorage.setItem(CREATOR_STORAGE_KEY, JSON.stringify(creators));
+        window.localStorage.setItem(key, JSON.stringify(creators));
       } else {
-        window.localStorage.removeItem(CREATOR_STORAGE_KEY);
+        window.localStorage.removeItem(key);
       }
-    } catch {
-      // Ignore quota issues safely
-    }
-  }, [hydrated, creators]);
+    } catch {}
+  }, [hydrated, creators, ownerId, isGuest]);
 
   const addCreator = useCallback(
-    (listId: string, creatorId: string) => {
+    (listId: string, creatorId: string, explicitCreator?: Creator) => {
       if (isGuest) {
         showToast("Sign in required: Guest preview sessions cannot save creators to CRM shortlists.", "error");
         return;
@@ -332,19 +395,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           showToast("Creator is already in this shortlist", "info");
           return current;
         }
-        showToast("Creator saved to shortlist!", "success");
-        return current.map((list) =>
+        const updated = current.map((list) =>
           list.id === target.id
             ? {
                 ...list,
                 creatorIds: [...list.creatorIds, creatorId],
-                statuses: { ...list.statuses, [creatorId]: "To review" },
+                statuses: { ...list.statuses, [creatorId]: "To review" as ProspectStatus },
               }
             : list,
         );
+        scheduleServerListSync(updated, explicitCreator ? [explicitCreator] : undefined);
+        showToast("Creator saved to shortlist!", "success");
+        return updated;
       });
     },
-    [isGuest, showToast],
+    [isGuest, showToast, scheduleServerListSync],
   );
 
   const removeCreator = useCallback(
@@ -353,19 +418,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         showToast("Sign in required: Guest preview sessions cannot modify CRM shortlists.", "error");
         return;
       }
-      setLists((current) =>
-        current.map((list) =>
+      setLists((current) => {
+        const updated = current.map((list) =>
           list.id === listId
             ? {
                 ...list,
                 creatorIds: list.creatorIds.filter((id) => id !== creatorId),
               }
             : list,
-        ),
-      );
+        );
+        scheduleServerListSync(updated);
+        return updated;
+      });
       showToast("Creator removed from shortlist", "info");
     },
-    [isGuest, showToast],
+    [isGuest, showToast, scheduleServerListSync],
   );
 
   const createList = useCallback(
@@ -374,73 +441,104 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         showToast("Sign in required: Guest preview sessions cannot create shortlists.", "error");
         return "";
       }
-      const id = `list-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setLists((current) => [
-        ...current,
-        { id, name: name.trim() || "Untitled List", creatorIds: [], notes: {}, tags: {}, statuses: {} },
-      ]);
+      const id = `list-${ownerId || "user"}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      setLists((current) => {
+        const updated = [
+          ...current,
+          { id, name: name.trim() || "Untitled List", creatorIds: [], notes: {}, tags: {}, statuses: {} },
+        ];
+        scheduleServerListSync(updated);
+        return updated;
+      });
       showToast(`Created shortlist "${name}"`, "success");
       return id;
     },
-    [isGuest, showToast],
+    [isGuest, ownerId, showToast, scheduleServerListSync],
   );
 
   const deleteList = useCallback(
     (listId: string) => {
+      if (isGuest) {
+        showToast("Sign in required: Guest preview sessions cannot delete shortlists.", "error");
+        return;
+      }
       setLists((current) => {
         if (current.length <= 1) {
           showToast("Cannot delete the only remaining list", "error");
           return current;
         }
         const target = current.find((l) => l.id === listId);
+        const updated = current.filter((l) => l.id !== listId);
+        scheduleServerListSync(updated);
         showToast(`Deleted shortlist "${target?.name ?? ""}"`, "info");
-        return current.filter((l) => l.id !== listId);
+        return updated;
       });
     },
-    [showToast],
+    [isGuest, showToast, scheduleServerListSync],
   );
 
   const renameList = useCallback(
     (listId: string, newName: string) => {
-      setLists((current) =>
-        current.map((list) =>
+      if (isGuest) {
+        showToast("Sign in required: Guest preview sessions cannot rename shortlists.", "error");
+        return;
+      }
+      setLists((current) => {
+        const updated = current.map((list) =>
           list.id === listId ? { ...list, name: newName.trim() || list.name } : list,
-        ),
-      );
+        );
+        scheduleServerListSync(updated);
+        return updated;
+      });
       showToast("Shortlist renamed successfully", "success");
     },
-    [showToast],
+    [isGuest, showToast, scheduleServerListSync],
   );
 
-  const updateNote = useCallback((listId: string, creatorId: string, note: string) => {
-    setLists((current) =>
-      current.map((list) =>
-        list.id === listId ? { ...list, notes: { ...list.notes, [creatorId]: note } } : list,
-      ),
-    );
-  }, []);
+  const updateNote = useCallback(
+    (listId: string, creatorId: string, note: string) => {
+      if (isGuest) return;
+      setLists((current) => {
+        const updated = current.map((list) =>
+          list.id === listId ? { ...list, notes: { ...list.notes, [creatorId]: note } } : list,
+        );
+        scheduleServerListSync(updated);
+        return updated;
+      });
+    },
+    [isGuest, scheduleServerListSync],
+  );
 
   const updateStatus = useCallback(
     (listId: string, creatorId: string, status: ProspectStatus) => {
-      setLists((current) =>
-        current.map((list) =>
+      if (isGuest) return;
+      setLists((current) => {
+        const updated = current.map((list) =>
           list.id === listId
             ? { ...list, statuses: { ...list.statuses, [creatorId]: status } }
             : list,
-        ),
-      );
+        );
+        scheduleServerListSync(updated);
+        return updated;
+      });
       showToast(`Status updated to "${status}"`, "info");
     },
-    [showToast],
+    [isGuest, showToast, scheduleServerListSync],
   );
 
-  const updateTags = useCallback((listId: string, creatorId: string, tags: string[]) => {
-    setLists((current) =>
-      current.map((list) =>
-        list.id === listId ? { ...list, tags: { ...list.tags, [creatorId]: tags } } : list,
-      ),
-    );
-  }, []);
+  const updateTags = useCallback(
+    (listId: string, creatorId: string, tags: string[]) => {
+      if (isGuest) return;
+      setLists((current) => {
+        const updated = current.map((list) =>
+          list.id === listId ? { ...list, tags: { ...list.tags, [creatorId]: tags } } : list,
+        );
+        scheduleServerListSync(updated);
+        return updated;
+      });
+    },
+    [isGuest, scheduleServerListSync],
+  );
 
   const setActiveWorkspace = useCallback(
     (ws: Workspace) => {
@@ -489,127 +587,140 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return [creator, ...prev];
       });
 
-      // Persist to server if authenticated
-      try {
-        fetch("/api/creators", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(creator),
-        }).catch(() => {});
-      } catch {}
+      // Persist creator + link into user's active shortlist on the server
+      fetch("/api/creators", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...creator, listId: lists[0]?.id }),
+      }).catch(() => {});
 
       showToast(`Saved ${creator.name} to workspace!`, "success");
     },
-    [isGuest, showToast],
+    [isGuest, lists, showToast],
   );
 
   const syncAllPlatforms = useCallback(async () => {
+    if (isGuest) {
+      showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+      return;
+    }
+
     setIsSyncing(true);
     try {
       const res = await fetch("/api/sync", { method: "POST" });
       const data = await res.json();
 
-      if (data.success && Array.isArray(data.creators) && data.creators.length > 0) {
+      if (!res.ok) {
+        showToast(data?.error || "Platform sync requires valid authentication.", "error");
+        return;
+      }
+
+      if (Array.isArray(data.creators) && data.creators.length > 0) {
         setCreators((prev) => {
           const map = new Map<string, Creator>(prev.map((c) => [c.id, c]));
           data.creators.forEach((c: Creator) => map.set(c.id, c));
           return Array.from(map.values());
         });
-
-        const dbSaved = data.database?.savedToDb;
-        showToast(
-          dbSaved
-            ? `🎉 Live synced ${data.creators.length} creators directly from platform APIs to Supabase Database!`
-            : `⚡ Live synced ${data.creators.length} creators directly from platform APIs!`,
-          "success",
-        );
-      } else {
-        showToast(
-          "Federated sync completed. Configure platform API keys in Settings to enable automated background sync.",
-          "info",
-        );
       }
 
+      showToast(data.message || "Platform sync finished.", data.stats?.totalSynced > 0 ? "success" : "info");
       setLastSyncedAt(new Date());
     } catch {
-      showToast("Synchronized data with live platform APIs", "info");
+      showToast("Sync request failed. Check network or API status.", "error");
     } finally {
       setIsSyncing(false);
     }
-  }, [showToast]);
+  }, [isGuest, showToast]);
 
   const setUserRole = useCallback(
     (role: UserRole) => {
       setUserRoleState(role);
       saveUserRole(role, ownerId);
+      if (isAuthenticated) {
+        fetch("/api/quota", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role }),
+        }).catch(() => {});
+      }
       showToast(
         `Role set to ${role === "creator" ? "Creator (Talent)" : "Brand / Marketer"}`,
         "info",
       );
     },
-    [ownerId, showToast],
+    [ownerId, isAuthenticated, showToast],
+  );
+
+  const syncServerQuota = useCallback(
+    (sub: UserSubscriptionState) => {
+      if (!sub || typeof sub.searchesRemaining !== "number") return;
+      setSubscription(sub);
+      saveUserSubscription(sub, ownerId);
+    },
+    [ownerId],
   );
 
   const upgradeSubscription = useCallback(
-    (planId: SubscriptionPlanId) => {
-      const tier = SUBSCRIPTION_TIERS.find((t) => t.id === planId) ?? SUBSCRIPTION_TIERS[1];
-      const newSub: UserSubscriptionState = {
-        planId: tier.id,
-        searchesRemaining: tier.searchQuota === -1 ? 999999 : tier.searchQuota,
-        totalQuota: tier.searchQuota,
-        updatedAt: new Date().toISOString(),
-      };
-      setSubscription(newSub);
-      saveUserSubscription(newSub, ownerId);
-      setPricingModalOpen(false);
-      showToast(
-        `Successfully upgraded to ${tier.name}! You now have ${
-          tier.searchQuota === -1 ? "Unlimited" : tier.searchQuota
-        } searches.`,
-        "success",
-      );
+    async (planId: SubscriptionPlanId) => {
+      if (isGuest) {
+        showToast("Sign in required: Please sign in to change workspace plans.", "error");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/quota", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planId }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(
+            data?.error || "Billing provider required before upgrading above the 50-search quota.",
+            "info",
+          );
+          return;
+        }
+        if (data?.subscription) {
+          syncServerQuota(data.subscription);
+          setPricingModalOpen(false);
+          showToast("Workspace plan updated.", "success");
+        }
+      } catch {
+        showToast("Unable to update plan right now.", "error");
+      }
     },
-    [ownerId, showToast],
+    [isGuest, syncServerQuota, showToast],
   );
 
   const hasAvailableQuota = useCallback((): boolean => {
-    const current = loadUserSubscription(ownerId);
-    if (current.totalQuota === -1) {
-      return true;
-    }
-    if (current.searchesRemaining <= 0) {
+    if (subscription.totalQuota === -1) return true;
+    if (subscription.searchesRemaining <= 0) {
       setPricingModalOpen(true);
       showToast(
-        "Search limit reached for your current plan. Please upgrade to continue searching.",
+        "Search limit reached for your current quota. Please upgrade or contact billing to continue searching.",
         "error",
       );
       return false;
     }
     return true;
-  }, [ownerId, showToast]);
+  }, [subscription.totalQuota, subscription.searchesRemaining, showToast]);
 
   const deductSearch = useCallback((): boolean => {
-    const current = loadUserSubscription(ownerId);
-    if (current.totalQuota === -1) {
-      return true; // Unlimited plan
-    }
-    if (current.searchesRemaining <= 0) {
+    if (subscription.totalQuota === -1) return true;
+    if (subscription.searchesRemaining <= 0) {
       setPricingModalOpen(true);
-      showToast(
-        "Search limit reached for your current plan. Please upgrade to continue searching.",
-        "error",
-      );
       return false;
     }
     const updated: UserSubscriptionState = {
-      ...current,
-      searchesRemaining: Math.max(0, current.searchesRemaining - 1),
+      ...subscription,
+      searchesRemaining: Math.max(0, subscription.searchesRemaining - 1),
       updatedAt: new Date().toISOString(),
     };
     saveUserSubscription(updated, ownerId);
     setSubscription(updated);
     return true;
-  }, [ownerId, showToast]);
+  }, [subscription, ownerId]);
 
   const value = useMemo(
     () => ({
@@ -620,6 +731,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       storageError,
       ownerId,
+      userEmail,
       isGuest,
       isAuthenticated,
       addCreator,
@@ -642,6 +754,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       userRole,
       setUserRole,
       upgradeSubscription,
+      syncServerQuota,
       hasAvailableQuota,
       deductSearch,
       pricingModalOpen,
@@ -657,6 +770,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       storageError,
       ownerId,
+      userEmail,
       isGuest,
       isAuthenticated,
       addCreator,
@@ -679,6 +793,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       userRole,
       setUserRole,
       upgradeSubscription,
+      syncServerQuota,
       hasAvailableQuota,
       deductSearch,
       pricingModalOpen,

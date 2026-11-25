@@ -1,29 +1,26 @@
 import { NextResponse } from "next/server";
-import { saveCreatorsToSupabase, testSupabaseConnection } from "@/lib/supabase/db-sync";
-import { fetchAllLiveCreators } from "@/lib/api-fetcher";
+import {
+  loadUserAccountData,
+  saveCreatorsToSupabase,
+  testSupabaseConnection,
+} from "@/lib/supabase/db-sync";
+import { refreshSavedCreatorsFromConnectors } from "@/lib/api-fetcher";
+import { resolveServerSession } from "@/lib/auth/server-session";
 
 export async function POST(request: Request) {
-  // Enforce server-side authorization: Reject guest or unauthenticated write attempts
-  const cookieHeader = request.headers.get("cookie") || "";
-  const isGuestCookie =
-    cookieHeader.includes("mosaic_user_session=guest") ||
-    cookieHeader.includes("mosaic_user_session=demo-guest") ||
-    cookieHeader.includes("guest%40getviral.io") ||
-    cookieHeader.includes("demo-guest%40getviral.io") ||
-    cookieHeader.includes("guest%40mosaicscout.com");
-  const hasSessionCookie = cookieHeader.includes("mosaic_user_session=");
-
-  if (isGuestCookie || !hasSessionCookie) {
+  // Enforce verified server-side authentication
+  const session = await resolveServerSession(request);
+  if (!session.authenticated || !session.userId) {
     return NextResponse.json(
       {
         success: false,
-        message: "Unauthorized: Workspace owner or admin sign-in required to synchronize database.",
+        message: "Unauthorized: Signed-in workspace account required to synchronize database.",
       },
       { status: 401 },
     );
   }
 
-  let body: { url?: string; key?: string; limit?: number } = {};
+  let body: { url?: string; key?: string } = {};
   try {
     body = await request.json();
   } catch {
@@ -51,17 +48,26 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Fetch and sync live API creators from Kick, YouTube & Twitch
-    const { creators: liveCreators } = await fetchAllLiveCreators();
+    const { creators: userCreators } = await loadUserAccountData(session.userId);
+    if (userCreators.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "Database connected! You have 0 saved creators in your workspace yet — save creators from Discover to sync their metrics.",
+        inserted: 0,
+        table: "public.creators",
+      });
+    }
+
+    const { creators: refreshed, stats } = await refreshSavedCreatorsFromConnectors(userCreators);
     let liveInserted = 0;
-    if (liveCreators.length > 0) {
-      const liveRes = await saveCreatorsToSupabase(liveCreators, override);
+    if (stats.totalSynced > 0) {
+      const liveRes = await saveCreatorsToSupabase(refreshed, override);
       liveInserted = liveRes.inserted;
     }
 
     return NextResponse.json({
       success: true,
-      message: `Database synchronized with ${liveInserted} live creator channels from platform APIs!`,
+      message: `Synchronized ${liveInserted} saved workspace creator(s) with live platform APIs!`,
       inserted: liveInserted,
       table: "public.creators",
     });

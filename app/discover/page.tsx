@@ -155,6 +155,7 @@ export default function DiscoverPage() {
     isSyncing,
     syncAllPlatforms,
     subscription,
+    syncServerQuota,
     hasAvailableQuota,
     deductSearch,
     setPricingModalOpen,
@@ -189,8 +190,25 @@ export default function DiscoverPage() {
         const res = await fetch(`/api/creators?q=${encodeURIComponent(val)}${platformParam}`);
         const data = await res.json();
 
+        if (data?.subscription) {
+          syncServerQuota(data.subscription);
+        }
+
+        if (res.status === 429 || data?.quotaExhausted) {
+          setLiveSearchResults([]);
+          setPricingModalOpen(true);
+          showToast(
+            data?.error || "Search quota exhausted (0 remaining). Quota is enforced on the server.",
+            "error",
+          );
+          return;
+        }
+
         if (Array.isArray(data.creators)) {
           setLiveSearchResults(data.creators);
+          try {
+            window.sessionStorage.setItem("gv_recent_live_creators_v1", JSON.stringify(data.creators));
+          } catch {}
           if (data.connectorStatuses) {
             setConnectorStatuses(data.connectorStatuses);
           }
@@ -206,13 +224,17 @@ export default function DiscoverPage() {
             chargeSearch: Boolean(data.chargeSearch),
           });
 
-          // Only charge quota if at least one provider succeeded and returned live data
+          // Authoritative server quota already updated via data.subscription above
           if (data.chargeSearch) {
-            deductSearch();
-            const leftText =
-              subscription.totalQuota === -1
-                ? "Unlimited"
-                : `${Math.max(0, subscription.searchesRemaining - 1)} searches left`;
+            const subToShow = data.subscription;
+            if (!subToShow) {
+              deductSearch();
+            }
+            const remaining = subToShow
+              ? subToShow.searchesRemaining
+              : Math.max(0, subscription.searchesRemaining - 1);
+            const totalQ = subToShow ? subToShow.totalQuota : subscription.totalQuota;
+            const leftText = totalQ === -1 ? "Unlimited" : `${remaining} searches left`;
             showToast(
               `Found ${data.creators.length} live creators across ${(data.succeededProviders || []).join(", ") || "platforms"} (${leftText})`,
               "info",
@@ -241,7 +263,7 @@ export default function DiscoverPage() {
         setIsSearching(false);
       }
     },
-    [searchInput, hasAvailableQuota, deductSearch, update, filters.platform, subscription.totalQuota, subscription.searchesRemaining, showToast],
+    [searchInput, hasAvailableQuota, deductSearch, syncServerQuota, setPricingModalOpen, update, filters.platform, subscription.totalQuota, subscription.searchesRemaining, showToast],
   );
 
   // Parse initial query params
@@ -531,17 +553,25 @@ export default function DiscoverPage() {
   async function handleLiveLookup(e: React.FormEvent) {
     e.preventDefault();
     if (!importHandle.trim()) return;
+    if (!hasAvailableQuota()) return;
     setImportLoading(true);
     setImportError("");
     setImportResult(null);
 
     try {
       const res = await fetch(
-        `/api/lookup?platform=${encodeURIComponent(importPlatform)}&handle=${encodeURIComponent(
+        `/api/lookup?mode=discover&platform=${encodeURIComponent(importPlatform)}&handle=${encodeURIComponent(
           importHandle.trim(),
         )}`,
       );
       const data = await res.json();
+      if (data?.subscription) {
+        syncServerQuota(data.subscription);
+      }
+      if (res.status === 429 || data?.quotaExhausted) {
+        setPricingModalOpen(true);
+        throw new Error(data?.error || "Search quota exhausted (0 searches remaining).");
+      }
       if (!res.ok || !data.success) {
         throw new Error(data.error || `Failed to lookup channel on ${importPlatform}.`);
       }
@@ -549,13 +579,22 @@ export default function DiscoverPage() {
       const pCreator = data.creator;
       const detectedCountry =
         pCreator.country ||
-        detectCreatorCountry(pCreator.handle, pCreator.displayName, pCreator.bio) ||
-        "United States";
+        detectCreatorCountry(pCreator.handle, pCreator.name || pCreator.displayName, pCreator.bio) ||
+        null;
 
       const detectedLanguage = pCreator.language || "English";
+      const parsedFollowers =
+        pCreator.followers !== null && pCreator.followers !== undefined
+          ? Number(pCreator.followers)
+          : null;
+      const parsedReach =
+        pCreator.reach !== null && pCreator.reach !== undefined
+          ? Number(pCreator.reach)
+          : null;
 
       setImportResult({
-        name: pCreator.displayName || pCreator.handle,
+        id: pCreator.id || `creator-${importPlatform.toLowerCase()}-${Date.now()}`,
+        name: pCreator.name || pCreator.displayName || pCreator.handle,
         category: pCreator.category || "General",
         language: detectedLanguage,
         creatorCountry: detectedCountry,
@@ -569,12 +608,12 @@ export default function DiscoverPage() {
             profileUrl: pCreator.profileUrl,
             activity: pCreator.isLiveStream ? "Live Now" : "Active",
             snapshots: [
-              ...(pCreator.followers !== null
+              ...(parsedFollowers !== null && !Number.isNaN(parsedFollowers)
                 ? [
                     {
                       id: `snap-${Date.now()}-1`,
                       metricName: "followers",
-                      value: pCreator.followers,
+                      value: parsedFollowers,
                       unit: "count" as const,
                       collectedAt: data.fetchedAt || new Date().toISOString(),
                       windowStart: null,
@@ -586,7 +625,7 @@ export default function DiscoverPage() {
                     },
                   ]
                 : []),
-              ...(pCreator.reach !== null
+              ...(parsedReach !== null && !Number.isNaN(parsedReach)
                 ? [
                     {
                       id: `snap-${Date.now()}-2`,
@@ -594,7 +633,7 @@ export default function DiscoverPage() {
                         importPlatform === "Twitch" || importPlatform === "Kick"
                           ? "avg_live_viewers"
                           : "avg_video_views",
-                      value: pCreator.reach,
+                      value: parsedReach,
                       unit: (importPlatform === "Twitch" || importPlatform === "Kick"
                         ? "count"
                         : "views") as "count" | "views",
@@ -623,9 +662,13 @@ export default function DiscoverPage() {
 
   function handleConfirmImport() {
     if (!importResult) return;
-    const finalCountry = importResult.creatorCountry || "Global";
+    if (isGuest) {
+      showToast("Sign in required: Guest preview sessions cannot save creators to workspace.", "error");
+      return;
+    }
+    const finalCountry = importResult.creatorCountry || null;
     const newCreator: Creator = {
-      id: `creator-${Date.now()}`,
+      id: importResult.id || `creator-${Date.now()}`,
       name: importResult.name || "New Creator",
       category: importResult.category || "General",
       language: importResult.language || "English",
@@ -671,10 +714,21 @@ export default function DiscoverPage() {
         <div className="page-heading-actions">
           <button
             className="button button-secondary sync-live-button"
-            onClick={syncAllPlatforms}
-            disabled={isSyncing}
-            title="Sync all platforms and refresh live metrics across connected APIs"
+            onClick={() => {
+              if (isGuest) {
+                showToast("Sign in required: Guest sandbox sessions cannot trigger platform sync.", "error");
+                return;
+              }
+              void syncAllPlatforms();
+            }}
+            disabled={isGuest || isSyncing}
+            title={
+              isGuest
+                ? "Sign in as workspace owner or admin to trigger platform sync"
+                : "Sync all platforms and refresh live metrics across connected APIs"
+            }
             type="button"
+            style={isGuest ? { opacity: 0.65, cursor: "not-allowed" } : undefined}
           >
             <RefreshCw size={14} className={isSyncing ? "spin-icon" : ""} />
             <span>{isSyncing ? "Syncing APIs…" : "Sync Live Data"}</span>
@@ -1215,7 +1269,13 @@ export default function DiscoverPage() {
                             <tr
                               key={`${creator.id}:${account.id}`}
                               className="clickable-row"
-                              onClick={() => router.push(`/creators/${creator.id}`)}
+                              onClick={() =>
+                                router.push(
+                                  `/creators/${creator.id}?platform=${encodeURIComponent(
+                                    account.platform,
+                                  )}&handle=${encodeURIComponent(account.handle)}`,
+                                )
+                              }
                               style={{ cursor: "pointer" }}
                             >
                               <td>
@@ -1396,7 +1456,13 @@ export default function DiscoverPage() {
                         <div className="mobile-card-header">
                           <div
                             className="creator-cell"
-                            onClick={() => router.push(`/creators/${creator.id}`)}
+                            onClick={() =>
+                              router.push(
+                                `/creators/${creator.id}?platform=${encodeURIComponent(
+                                  account.platform,
+                                )}&handle=${encodeURIComponent(account.handle)}`,
+                              )
+                            }
                             style={{ cursor: "pointer" }}
                           >
                             <span className="creator-avatar">
@@ -1678,11 +1744,11 @@ export default function DiscoverPage() {
                     value={importPlatform}
                     onChange={(e) => setImportPlatform(e.target.value as Platform)}
                   >
-                    <option value="YouTube">YouTube (Data API v3)</option>
-                    <option value="Twitch">Twitch (Helix API)</option>
-                    <option value="Kick">Kick (Public API v2)</option>
-                    <option value="TikTok">TikTok (Display API)</option>
-                    <option value="Instagram">Instagram (Graph API)</option>
+                    <option value="YouTube">YouTube (Data API v3 — key required)</option>
+                    <option value="Twitch">Twitch (Helix API — key required)</option>
+                    <option value="Kick">Kick (Public API v2 — Active)</option>
+                    <option value="TikTok">TikTok (Unavailable — Creator OAuth Req.)</option>
+                    <option value="Instagram">Instagram (Unavailable — Meta OAuth Req.)</option>
                   </select>
                 </label>
 
@@ -1701,16 +1767,36 @@ export default function DiscoverPage() {
                     }
                     value={importHandle}
                     onChange={(e) => setImportHandle(e.target.value)}
+                    disabled={importPlatform === "TikTok" || importPlatform === "Instagram"}
                     required
                   />
                 </label>
               </div>
 
+              {(importPlatform === "TikTok" || importPlatform === "Instagram") && (
+                <div className="auth-error" role="status" style={{ marginTop: 10 }}>
+                  <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                  <span>
+                    {importPlatform} lookup is currently unavailable for unauthenticated queries. Official{" "}
+                    {importPlatform === "TikTok" ? "TikTok Display API" : "Meta Instagram Graph API"} requires{" "}
+                    {importPlatform === "TikTok"
+                      ? "creator OAuth authorization"
+                      : "Meta App Review and an Instagram Professional account token"}
+                    .
+                  </span>
+                </div>
+              )}
+
               <div className="import-actions-row">
                 <button
                   className="button button-primary"
                   type="submit"
-                  disabled={importLoading || !importHandle.trim()}
+                  disabled={
+                    importLoading ||
+                    !importHandle.trim() ||
+                    importPlatform === "TikTok" ||
+                    importPlatform === "Instagram"
+                  }
                 >
                   {importLoading ? (
                     <>
@@ -1782,9 +1868,18 @@ export default function DiscoverPage() {
                   <button
                     className="button button-primary button-full"
                     onClick={handleConfirmImport}
+                    disabled={isGuest}
+                    title={
+                      isGuest
+                        ? "Sign in required: Guest preview sessions cannot save creators to workspace"
+                        : undefined
+                    }
                     type="button"
                   >
-                    <Check size={14} /> Save {importResult.name} to Workspace Prospects
+                    <Check size={14} />{" "}
+                    {isGuest
+                      ? `Sign In to Save ${importResult.name} to Workspace`
+                      : `Save ${importResult.name} to Workspace Prospects`}
                   </button>
                 </div>
               )}

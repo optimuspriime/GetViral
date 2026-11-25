@@ -47,7 +47,7 @@ export async function lookupKick(
     const res = await fetch(url, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "MosaicScout/1.0",
+        "User-Agent": "GetViralScout/1.0",
       },
       next: { revalidate: 0 },
     });

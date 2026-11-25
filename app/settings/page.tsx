@@ -40,17 +40,26 @@ export default function SettingsPage() {
       documentationUrl: string;
       setup: string;
       limitation: string;
+      supportsLiveDiscovery?: boolean;
+      supportsHandleLookup?: boolean;
     }>
   >(() =>
     INTEGRATIONS.map((i) => ({
       platform: i.platform,
       connected: i.platform === "Kick",
-      mode: i.platform === "Kick" ? "active_api" : "unconfigured",
+      mode:
+        i.platform === "Kick"
+          ? "active_api"
+          : i.requiresCreatorOAuth
+          ? "requires_oauth"
+          : "unconfigured",
       connectorStatus: i.connectorStatus,
       statusNote: i.statusNote,
       documentationUrl: i.documentationUrl,
       setup: i.setup,
       limitation: i.limitation,
+      supportsLiveDiscovery: i.supportsLiveDiscovery,
+      supportsHandleLookup: i.supportsHandleLookup,
     })),
   );
 
@@ -59,6 +68,8 @@ export default function SettingsPage() {
     TWITCH_CLIENT_ID?: boolean;
     TWITCH_CLIENT_SECRET?: boolean;
     KICK_PUBLIC_API?: boolean;
+    TIKTOK_CLIENT_KEY?: boolean;
+    META_APP_ID?: boolean;
     NEXT_PUBLIC_SUPABASE_URL?: boolean;
   }>({});
 
@@ -96,48 +107,38 @@ export default function SettingsPage() {
     setClient(c);
 
     if (!c) {
-      if (typeof window !== "undefined") {
-        const localUser = window.localStorage.getItem("mosaic_user_session");
-        if (localUser) {
-          try {
-            const parsed = JSON.parse(localUser);
-            if (parsed.email) setUserEmail(parsed.email);
-          } catch {}
-        }
-      }
+      setUserEmail(null);
       setAuthLoading(false);
-      return;
-    }
-
-    c.auth
-      .getUser()
-      .then(({ data, error }) => {
-        if (error) {
-          const isSessionMissing =
-            error.name === "AuthSessionMissingError" ||
-            error.message?.toLowerCase().includes("auth session missing") ||
-            error.message?.toLowerCase().includes("session not found") ||
-            (error as { status?: number }).status === 400;
-          if (isSessionMissing) {
-            // Signed-out visitor is a normal expected state - do not log as application error
-            setUserEmail(null);
+    } else {
+      c.auth
+        .getUser()
+        .then(({ data, error }) => {
+          if (error) {
+            const isSessionMissing =
+              error.name === "AuthSessionMissingError" ||
+              error.message?.toLowerCase().includes("auth session missing") ||
+              error.message?.toLowerCase().includes("session not found") ||
+              (error as { status?: number }).status === 400;
+            if (isSessionMissing) {
+              setUserEmail(null);
+            } else {
+              console.warn("Supabase auth check notice:", error.message);
+              setAuthError(error.message);
+            }
           } else {
-            console.warn("Supabase auth check notice:", error.message);
-            setAuthError(error.message);
+            setUserEmail(data.user?.email ?? null);
           }
-        } else {
-          setUserEmail(data.user?.email ?? null);
-        }
-        setAuthLoading(false);
-      })
-      .catch((error: unknown) => {
-        const msg = error instanceof Error ? error.message : String(error);
-        if (!msg.toLowerCase().includes("session missing")) {
-          console.warn("Supabase auth check notice:", msg);
-        }
-        setUserEmail(null);
-        setAuthLoading(false);
-      });
+          setAuthLoading(false);
+        })
+        .catch((error: unknown) => {
+          const msg = error instanceof Error ? error.message : String(error);
+          if (!msg.toLowerCase().includes("session missing")) {
+            console.warn("Supabase auth check notice:", msg);
+          }
+          setUserEmail(null);
+          setAuthLoading(false);
+        });
+    }
 
     // Inspect live server integration health
     fetch("/api/integrations")
@@ -367,7 +368,9 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
           ? "adinross"
           : "cristiano";
 
-      const res = await fetch(`/api/lookup?platform=${encodeURIComponent(platform)}&handle=${encodeURIComponent(handle)}`);
+      const res = await fetch(
+        `/api/lookup?mode=probe&platform=${encodeURIComponent(platform)}&handle=${encodeURIComponent(handle)}`,
+      );
       const data = await res.json();
 
       if (res.ok && data.success) {
@@ -375,7 +378,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
           ...prev,
           [platform]: {
             status: "success",
-            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? "Verified Catalog Snapshot"}, freshness: ${data.dataFreshness ?? "Verified Snapshot"})`,
+            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? `${platform} API`}, freshness: ${data.dataFreshness ?? "Live API Response"})`,
           },
         }));
         showToast(`${platform} API connection verified!`, "success");
@@ -410,7 +413,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
 
     try {
       const res = await fetch(
-        `/api/lookup?platform=${encodeURIComponent(testConsolePlatform)}&handle=${encodeURIComponent(
+        `/api/lookup?mode=probe&platform=${encodeURIComponent(testConsolePlatform)}&handle=${encodeURIComponent(
           testConsoleHandle.trim(),
         )}`,
       );
@@ -451,8 +454,26 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                   Active platform connectors for real-time channel metadata and subscriber analytics
                 </p>
               </div>
-              <span className="status-label status-connected">
-                <CheckCircle2 size={12} /> Live API Network
+              <span
+                className="status-label"
+                style={{
+                  backgroundColor:
+                    integrationsStatus.filter((i) => i.connected).length > 1
+                      ? "rgba(34, 197, 94, 0.12)"
+                      : "rgba(234, 179, 8, 0.14)",
+                  color:
+                    integrationsStatus.filter((i) => i.connected).length > 1
+                      ? "#15803d"
+                      : "#92400e",
+                  border: `1px solid ${
+                    integrationsStatus.filter((i) => i.connected).length > 1
+                      ? "rgba(34, 197, 94, 0.3)"
+                      : "rgba(234, 179, 8, 0.3)"
+                  }`,
+                }}
+              >
+                <CheckCircle2 size={12} />{" "}
+                {integrationsStatus.filter((i) => i.connected).length} / {integrationsStatus.length} Connectors Active
               </span>
             </div>
 
@@ -481,11 +502,19 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                           style={{
                             backgroundColor: integration.connected
                               ? "rgba(34, 197, 94, 0.12)"
+                              : integration.mode === "requires_oauth"
+                              ? "rgba(100, 116, 139, 0.12)"
                               : "rgba(234, 179, 8, 0.12)",
-                            color: integration.connected ? "#15803d" : "#b45309",
+                            color: integration.connected
+                              ? "#15803d"
+                              : integration.mode === "requires_oauth"
+                              ? "#475569"
+                              : "#b45309",
                             border: `1px solid ${
                               integration.connected
                                 ? "rgba(34, 197, 94, 0.3)"
+                                : integration.mode === "requires_oauth"
+                                ? "rgba(100, 116, 139, 0.3)"
                                 : "rgba(234, 179, 8, 0.3)"
                             }`,
                           }}
@@ -494,8 +523,8 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                           {integration.connectorStatus}
                         </span>
                       </div>
-                      <span>{integration.setup}</span>
-                      <p className="integration-limitation">{integration.limitation}</p>
+                      <span>{integration.statusNote}</span>
+                      <p className="integration-limitation">{integration.setup} {integration.limitation}</p>
 
                       {result && (
                         <div
@@ -553,7 +582,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                   <Terminal size={14} className="inline-icon" /> Live API Query Sandbox
                 </h2>
                 <p className="card-caption">
-                  Execute live API requests against YouTube, Kick, Twitch, and verified directories
+                  Execute live handle queries against server-configured connectors (Kick public API active; YouTube/Twitch require keys; TikTok/Instagram require OAuth)
                 </p>
               </div>
             </div>
@@ -598,7 +627,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
 
               {testConsoleOutput && (
                 <div className="console-output-wrap">
-                  <div className="console-output-label">API RESPONSE (200 OK)</div>
+                  <div className="console-output-label">API RESPONSE</div>
                   <pre className="console-output-pre">{testConsoleOutput}</pre>
                 </div>
               )}
@@ -723,9 +752,9 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
                 <div className="creator-role-banner">
                   <Sparkles size={14} className="text-green" />
                   <div>
-                    <strong>Creator Onboarding Enabled</strong>
+                    <strong>Creator Workspace Mode Enabled</strong>
                     <p>
-                      You can submit your YouTube, Twitch, Kick, and Instagram metrics directly into the live catalog so verified brands can discover and sponsor your channel.
+                      Manage your verified channel lookup preferences and track how brands discover your live platform metrics.
                     </p>
                   </div>
                 </div>
@@ -1071,7 +1100,10 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
             <ul className="principle-list">
               <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
-                  <code>YOUTUBE_DATA_API_KEY</code> — Active for live YouTube search & statistics.
+                  <code>YOUTUBE_DATA_API_KEY</code> —{" "}
+                  {envStatus.YOUTUBE_DATA_API_KEY
+                    ? "Active for live YouTube Data API v3 search & statistics."
+                    : "Not set on server; live YouTube keyword discovery & stats are unavailable."}
                 </div>
                 <span
                   className="status-pill"
@@ -1088,7 +1120,10 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
               </li>
               <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
-                  <code>TWITCH_CLIENT_ID</code> & <code>TWITCH_CLIENT_SECRET</code> — Twitch Helix API.
+                  <code>TWITCH_CLIENT_ID</code> & <code>TWITCH_CLIENT_SECRET</code> —{" "}
+                  {envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET
+                    ? "Active for live Twitch Helix search & stream status."
+                    : "Not set on server; live Twitch Helix discovery is unavailable."}
                 </div>
                 <span
                   className="status-pill"
@@ -1105,7 +1140,7 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
               </li>
               <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
-                  <code>KICK_PUBLIC_API</code> — Kick channel & livestream endpoint (Public REST v2).
+                  <code>KICK_PUBLIC_API</code> — Public REST v2 active for exact-handle lookup & livestream status (keyword discovery unsupported).
                 </div>
                 <span
                   className="status-pill"
@@ -1122,7 +1157,30 @@ create policy "Public subscriptions read/write" on public.user_subscriptions for
               </li>
               <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
-                  <code>NEXT_PUBLIC_SUPABASE_URL</code> — Team workspace database.
+                  <code>TIKTOK_CLIENT_KEY</code> & <code>META_APP_ID</code> —{" "}
+                  {envStatus.TIKTOK_CLIENT_KEY || envStatus.META_APP_ID
+                    ? "Developer app IDs present; individual creator/Meta OAuth flow required per creator."
+                    : "Unavailable for public discovery; requires TikTok Creator OAuth & Meta App Review."}
+                </div>
+                <span
+                  className="status-pill"
+                  style={{
+                    backgroundColor: "rgba(100, 116, 139, 0.15)",
+                    color: "#475569",
+                    border: "1px solid rgba(100, 116, 139, 0.3)",
+                    whiteSpace: "nowrap",
+                    fontSize: 11,
+                  }}
+                >
+                  OAuth Required
+                </span>
+              </li>
+              <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div>
+                  <code>NEXT_PUBLIC_SUPABASE_URL</code> —{" "}
+                  {envStatus.NEXT_PUBLIC_SUPABASE_URL
+                    ? "Connected for team workspace persistence, auth & quota enforcement."
+                    : "Not configured; using local workspace storage."}
                 </div>
                 <span
                   className="status-pill"

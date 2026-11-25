@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import type { Creator, Platform } from "@/lib/model";
 import { federatedSearch } from "@/lib/connectors/federated";
-import { loadCreatorsFromSupabase, saveCreatorsToSupabase } from "@/lib/supabase/db-sync";
+import { loadUserAccountData, saveCreatorsToSupabase, syncUserListsToSupabase } from "@/lib/supabase/db-sync";
+import { attachGuestCookie, resolveServerSession } from "@/lib/auth/server-session";
+import {
+  attachQuotaCookie,
+  checkServerQuotaAvailable,
+  consumeServerQuota,
+} from "@/lib/quota/server-quota";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,27 +16,47 @@ export async function GET(request: Request) {
   const category = searchParams.get("category");
   const country = searchParams.get("country");
 
-  // 1. If query is provided, execute real federated live search across connected platform APIs
+  const session = await resolveServerSession(request);
+
+  // 1. If query is provided, enforce server-side quota BEFORE running live federated search
   if (q) {
+    const quotaCheck = await checkServerQuotaAvailable(session);
+    if (!quotaCheck.allowed) {
+      const exhaustedRes = NextResponse.json(
+        {
+          query: q,
+          total: 0,
+          creators: [],
+          error: "Monthly search quota exhausted (0 searches remaining).",
+          quotaExhausted: true,
+          chargeSearch: false,
+          subscription: quotaCheck.subscription,
+          source: "Live Federated Platform Connectors",
+          isLive: false,
+        },
+        { status: 429 },
+      );
+      attachGuestCookie(exhaustedRes, session);
+      attachQuotaCookie(exhaustedRes, session, quotaCheck.subscription);
+      return exhaustedRes;
+    }
+
     const federated = await federatedSearch(q, {
       platform: platform && platform !== "All platforms" ? platform : undefined,
       limit: 20,
     });
 
-    // DO NOT mix catalog or saved database records into live search results.
-    // Live results must strictly come from the real platform connectors.
-
-    // Convert normalized creators into UI-compatible Creator format
+    // Live results must strictly come from real platform connectors (never mixed with DB/seed rows)
     const liveAsCreators: Creator[] = federated.creators.map((c) => ({
       id: c.id,
       name: c.name,
       category: c.category || "General",
       language: c.language || "English",
       creatorCountry: c.country,
-      creatorCountrySource: "Live Platform API",
+      creatorCountrySource: c.country ? "Live Platform API" : null,
       audienceInsights: [],
       bio: c.bio || `${c.name} on ${c.platform}`,
-      avatar: c.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      avatar: c.avatarUrl || "",
       businessContact: c.businessContact,
       accounts: [
         {
@@ -91,7 +117,6 @@ export async function GET(request: Request) {
       );
     }
 
-    // Determine which providers succeeded, failed, or were unconfigured
     const succeededProviders: Platform[] = [];
     const failedProviders: Platform[] = [];
     const unconfiguredProviders: Platform[] = [];
@@ -111,10 +136,13 @@ export async function GET(request: Request) {
       },
     );
 
-    // Don't charge quota if every provider failed, was unconfigured, or returned 0 live results
+    // Charge quota ONLY if at least one real provider succeeded and returned live results
     const chargeSearch = succeededProviders.length > 0 && filtered.length > 0;
+    const latestSubscription = chargeSearch
+      ? await consumeServerQuota(session)
+      : quotaCheck.subscription;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       query: q,
       total: filtered.length,
       creators: filtered,
@@ -124,70 +152,50 @@ export async function GET(request: Request) {
       unconfiguredProviders,
       unsupportedProviders,
       chargeSearch,
+      subscription: latestSubscription,
       source: "Live Federated Platform Connectors",
       isLive: true,
     });
+
+    attachGuestCookie(response, session);
+    attachQuotaCookie(response, session, latestSubscription);
+    return response;
   }
 
-  // 2. If no query is provided, check session authorization:
-  // Guests/signed-out sessions see 0 saved prospects (empty sandbox).
-  // Signed-in users see their saved creators from their workspace database.
-  const cookieHeader = request.headers.get("cookie") || "";
-  const isGuestRequest =
-    !cookieHeader.includes("mosaic_user_session=") ||
-    cookieHeader.includes("mosaic_user_session=guest") ||
-    cookieHeader.includes("mosaic_user_session=demo-guest") ||
-    cookieHeader.includes("guest%40") ||
-    cookieHeader.includes("demo-guest%40");
-
-  if (isGuestRequest) {
-    return NextResponse.json({
+  // 2. If no query is provided: guests get 0 creators; signed-in users get ONLY their account's saved creators
+  if (!session.authenticated || !session.userId) {
+    const guestRes = NextResponse.json({
       query: "",
       total: 0,
       creators: [],
       source: "Guest Sandbox (Read-Only)",
       isLive: false,
     });
+    attachGuestCookie(guestRes, session);
+    return guestRes;
   }
 
-  let savedCreators: Creator[] = [];
-  try {
-    const dbCreators = await loadCreatorsFromSupabase();
-    if (dbCreators && dbCreators.length > 0) {
-      savedCreators = dbCreators;
-    }
-  } catch {
-    // Database connection fallback
-  }
-
+  const { creators: userSavedCreators } = await loadUserAccountData(session.userId);
   return NextResponse.json({
     query: "",
-    total: savedCreators.length,
-    creators: savedCreators,
-    source: "Saved Workspace Database",
+    total: userSavedCreators.length,
+    creators: userSavedCreators,
+    source: "Authenticated User Workspace",
     isLive: false,
   });
 }
 
 export async function POST(request: Request) {
   try {
-    // Verify server-side authorization: Reject guest or unauthenticated write attempts
-    const cookieHeader = request.headers.get("cookie") || "";
-    const isGuestCookie =
-      cookieHeader.includes("mosaic_user_session=guest") ||
-      cookieHeader.includes("mosaic_user_session=demo-guest") ||
-      cookieHeader.includes("guest%40mosaicscout.com") ||
-      cookieHeader.includes("demo-guest%40mosaicscout.com");
-    const hasSessionCookie = cookieHeader.includes("mosaic_user_session=");
-
-    if (isGuestCookie || !hasSessionCookie) {
+    const session = await resolveServerSession(request);
+    if (!session.authenticated || !session.userId) {
       return NextResponse.json(
-        { error: "Unauthorized: Sign-in required. Guest sandbox sessions cannot write to database." },
+        { error: "Unauthorized: Valid account sign-in required. Guest sandbox sessions cannot save creators." },
         { status: 401 },
       );
     }
 
-    const body = (await request.json()) as Partial<Creator>;
+    const body = (await request.json()) as Partial<Creator> & { listId?: string };
     if (!body.name || !body.accounts || body.accounts.length === 0) {
       return NextResponse.json(
         { error: "Creator name and at least one platform account are required." },
@@ -196,12 +204,12 @@ export async function POST(request: Request) {
     }
 
     const newCreator: Creator = {
-      id: body.id || `creator-user-${Date.now()}`,
+      id: body.id || `creator-${Date.now()}`,
       name: body.name,
       category: body.category ?? "General",
       language: body.language ?? "English",
-      creatorCountry: body.creatorCountry ?? "United States",
-      creatorCountrySource: "User Submission",
+      creatorCountry: body.creatorCountry ?? null,
+      creatorCountrySource: body.creatorCountrySource ?? "Platform API",
       bio: body.bio ?? "",
       avatar: body.avatar ?? "",
       businessContact: body.businessContact ?? null,
@@ -209,14 +217,22 @@ export async function POST(request: Request) {
       audienceInsights: body.audienceInsights || [],
     };
 
-    // Save to database
-    let existing: Creator[] = [];
-    try {
-      existing = await loadCreatorsFromSupabase();
-    } catch {}
+    await saveCreatorsToSupabase([newCreator]);
 
-    const updated = [newCreator, ...existing.filter((c) => c.id !== newCreator.id)];
-    await saveCreatorsToSupabase(updated);
+    // Link saved creator strictly into this user's own shortlist so other accounts never see it
+    const userData = await loadUserAccountData(session.userId);
+    const targetList =
+      (body.listId && userData.lists.find((l) => l.id === body.listId)) || userData.lists[0];
+    const updatedLists = userData.lists.map((list) =>
+      list.id === targetList.id && !list.creatorIds.includes(newCreator.id)
+        ? {
+            ...list,
+            creatorIds: [...list.creatorIds, newCreator.id],
+            statuses: { ...list.statuses, [newCreator.id]: "To review" as const },
+          }
+        : list,
+    );
+    await syncUserListsToSupabase(session.userId, updatedLists, [newCreator]);
 
     return NextResponse.json({
       success: true,

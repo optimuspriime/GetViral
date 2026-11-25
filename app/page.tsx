@@ -6,14 +6,14 @@ import {
   BarChart3, CircleHelp, Users, Video, Radio, ChevronRight,
   TrendingUp, Sparkles, CheckCircle2, X, Search, Globe, ShieldCheck
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProspects } from "@/components/data-provider";
 import {
   ComparisonBarChart, PlatformChart, shortNumber
 } from "@/components/charts";
 import { BrandMark } from "@/components/brand-mark";
 import { platformColors } from "@/lib/platforms";
-import { INTEGRATIONS } from "@/lib/integrations";
+import { INTEGRATIONS, type IntegrationHealthItem } from "@/lib/integrations";
 import type { Creator, PlatformAccount } from "@/lib/model";
 import { currentFollowers, currentReach, reachMetricName } from "@/lib/metrics";
 import { getCountryFlag } from "@/lib/country-detector";
@@ -25,6 +25,35 @@ export default function DashboardPage() {
   const { creators, lists, activeWorkspace, subscription } = useProspects();
   const [showExplainer, setShowExplainer] = useState(false);
   const [quickSearchInput, setQuickSearchInput] = useState("");
+  const [integrationsHealth, setIntegrationsHealth] = useState<IntegrationHealthItem[]>(() =>
+    INTEGRATIONS.map((i) => ({
+      ...i,
+      connected: i.platform === "Kick",
+      mode:
+        i.platform === "Kick"
+          ? "active_api"
+          : i.requiresCreatorOAuth
+          ? "requires_oauth"
+          : "unconfigured",
+      availableForPublicDiscovery: false,
+    })),
+  );
+
+  useEffect(() => {
+    fetch("/api/integrations")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data?.integrations)) {
+          setIntegrationsHealth(data.integrations);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const activeConnectors = useMemo(
+    () => integrationsHealth.filter((i) => i.connected),
+    [integrationsHealth],
+  );
 
   const platformData = useMemo(() => {
     const counts = new Map<string, number>();
@@ -176,9 +205,9 @@ export default function DashboardPage() {
         <div onClick={() => router.push("/settings")} className="stat-clickable" role="button" tabIndex={0}>
           <StatCard
             tone="coral"
-            label="Platform Connectors"
-            value={5}
-            note="YouTube, Twitch, Kick, TikTok, Instagram"
+            label="Active Connectors"
+            value={activeConnectors.length}
+            note={`${activeConnectors.length} of ${integrationsHealth.length} active (${activeConnectors.map((i) => i.platform).join(", ") || "None"})`}
             icon={<Globe size={16} />}
           />
         </div>
@@ -206,43 +235,60 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-          {INTEGRATIONS.map((integ) => (
-            <div
-              key={integ.platform}
-              style={{
-                border: "1px solid rgba(80, 140, 80, 0.15)",
-                borderRadius: 12,
-                padding: "14px 16px",
-                background: "rgba(255, 255, 255, 0.5)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <strong style={{ fontSize: 14, color: "#1d472b" }}>{integ.platform}</strong>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    padding: "2px 7px",
-                    borderRadius: 6,
-                    background: integ.supportsLiveDiscovery ? "rgba(34, 197, 94, 0.12)" : "rgba(56, 189, 248, 0.12)",
-                    color: integ.supportsLiveDiscovery ? "#15803d" : "#0284c7",
-                  }}
-                >
-                  {integ.connectorStatus}
-                </span>
+          {integrationsHealth.map((integ) => {
+            const badgeBg = integ.connected
+              ? "rgba(34, 197, 94, 0.12)"
+              : integ.mode === "unconfigured"
+              ? "rgba(234, 179, 8, 0.14)"
+              : "rgba(100, 116, 139, 0.12)";
+            const badgeColor = integ.connected
+              ? "#15803d"
+              : integ.mode === "unconfigured"
+              ? "#92400e"
+              : "#475569";
+
+            return (
+              <div
+                key={integ.platform}
+                style={{
+                  border: "1px solid rgba(80, 140, 80, 0.15)",
+                  borderRadius: 12,
+                  padding: "14px 16px",
+                  background: "rgba(255, 255, 255, 0.5)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <strong style={{ fontSize: 14, color: "#1d472b" }}>{integ.platform}</strong>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "2px 7px",
+                      borderRadius: 6,
+                      background: badgeBg,
+                      color: badgeColor,
+                    }}
+                  >
+                    {integ.connectorStatus}
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: "#547359", margin: "0 0 10px", lineHeight: 1.4 }}>
+                  {integ.statusNote}
+                </p>
+                <div style={{ fontSize: 10, color: "#68836c" }}>
+                  {integ.connected && integ.supportsLiveDiscovery ? (
+                    <span style={{ color: "#166534" }}>✓ Live keyword discovery & handle lookup</span>
+                  ) : integ.connected && integ.supportsHandleLookup ? (
+                    <span style={{ color: "#15803d" }}>✓ Exact-handle lookup active (Public API v2)</span>
+                  ) : integ.mode === "unconfigured" ? (
+                    <span style={{ color: "#92400e" }}>⚡ Configure server API key in Settings</span>
+                  ) : (
+                    <span style={{ color: "#475569" }}>🔒 Unavailable — requires creator/Meta OAuth</span>
+                  )}
+                </div>
               </div>
-              <p style={{ fontSize: 11, color: "#547359", margin: "0 0 10px", lineHeight: 1.4 }}>
-                {integ.statusNote}
-              </p>
-              <div style={{ fontSize: 10, color: "#68836c" }}>
-                {integ.supportsLiveDiscovery ? (
-                  <span style={{ color: "#166534" }}>✓ Live keyword discovery & channel metrics</span>
-                ) : (
-                  <span>✓ Direct channel lookup by handle</span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

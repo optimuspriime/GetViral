@@ -1,58 +1,77 @@
 import { NextResponse } from "next/server";
-import { fetchAllLiveCreators } from "@/lib/api-fetcher";
-import { saveCreatorsToSupabase, testSupabaseConnection } from "@/lib/supabase/db-sync";
+import { refreshSavedCreatorsFromConnectors } from "@/lib/api-fetcher";
+import {
+  loadUserAccountData,
+  saveCreatorsToSupabase,
+  testSupabaseConnection,
+} from "@/lib/supabase/db-sync";
+import { resolveServerSession } from "@/lib/auth/server-session";
 
 export async function POST(request: Request) {
   const syncTimestamp = new Date().toISOString();
 
-  // Enforce server-side authorization: Reject guest or unauthenticated write attempts
-  const cookieHeader = request.headers.get("cookie") || "";
-  const isGuestCookie =
-    cookieHeader.includes("mosaic_user_session=guest") ||
-    cookieHeader.includes("mosaic_user_session=demo-guest") ||
-    cookieHeader.includes("guest%40getviral.io") ||
-    cookieHeader.includes("demo-guest%40getviral.io") ||
-    cookieHeader.includes("guest%40mosaicscout.com");
-  const hasSessionCookie = cookieHeader.includes("mosaic_user_session=");
-
-  if (isGuestCookie || !hasSessionCookie) {
+  // Require real verified authentication on the server
+  const session = await resolveServerSession(request);
+  if (!session.authenticated || !session.userId) {
     return NextResponse.json(
       {
         success: false,
-        error: "Unauthorized: Workspace owner or admin sign-in required to trigger platform sync.",
+        error: "Unauthorized: Signed-in workspace account required to trigger platform sync.",
       },
       { status: 401 },
     );
   }
 
   try {
-    // 1. Automatically fetch live data from platform APIs (Kick, YouTube, Twitch)
-    const { creators: liveCreators, stats } = await fetchAllLiveCreators();
+    // 1. Load ONLY this authenticated user's saved creators
+    const { creators: userCreators } = await loadUserAccountData(session.userId);
 
-    // 2. Test Supabase Database Connection
+    if (userCreators.length === 0) {
+      return NextResponse.json({
+        success: true,
+        syncedAt: syncTimestamp,
+        stats: {
+          kickCount: 0,
+          youtubeCount: 0,
+          twitchCount: 0,
+          unconfiguredPlatforms: [],
+          unsupportedPlatforms: [],
+          totalSynced: 0,
+          timestamp: syncTimestamp,
+        },
+        creators: [],
+        database: { connected: true, tableExists: true, savedToDb: false },
+        message: "No saved creators in your workspace yet. Search or look up creators first, then save them to sync live metrics.",
+      });
+    }
+
+    // 2. Refresh ONLY this user's saved creators from live connectors
+    const { creators: refreshedCreators, stats } = await refreshSavedCreatorsFromConnectors(userCreators);
+
+    // 3. Persist updated snapshots into Supabase
     const dbStatus = await testSupabaseConnection();
     let savedToDb = false;
 
-    if (dbStatus.connected && dbStatus.tableExists) {
-      // Upsert the newly fetched live creators into Supabase
-      if (liveCreators.length > 0) {
-        const saveRes = await saveCreatorsToSupabase(liveCreators);
-        savedToDb = saveRes.success;
-      }
+    if (dbStatus.connected && dbStatus.tableExists && stats.totalSynced > 0) {
+      const saveRes = await saveCreatorsToSupabase(refreshedCreators);
+      savedToDb = saveRes.success;
     }
 
     return NextResponse.json({
       success: true,
       syncedAt: syncTimestamp,
       stats,
-      creators: liveCreators,
+      creators: refreshedCreators,
       database: {
         connected: dbStatus.connected,
         tableExists: dbStatus.tableExists,
         savedToDb,
         message: dbStatus.message,
       },
-      message: `Automatically synchronized ${stats.totalSynced} creators live from Kick, YouTube & Twitch APIs!`,
+      message:
+        stats.totalSynced > 0
+          ? `Refreshed ${stats.totalSynced} saved platform account(s) from live APIs.`
+          : `Checked ${userCreators.length} saved creator(s). Configure unconfigured provider keys in Settings to refresh YouTube/Twitch accounts.`,
     });
   } catch (error) {
     return NextResponse.json(
@@ -69,6 +88,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     status: "ok",
-    message: "Platform sync requires an authorized POST request from a workspace owner or admin session.",
+    message: "Platform sync requires an authenticated POST request.",
   });
 }

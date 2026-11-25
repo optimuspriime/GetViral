@@ -4,7 +4,7 @@ import type { ConnectorResponse, PlatformCapability } from "./types";
 export const tiktokCapabilities: PlatformCapability = {
   platform: "TikTok",
   keywordDiscovery: false,
-  exactHandleLookup: true,
+  exactHandleLookup: false,
   categoryDiscovery: false,
   liveStreamStatus: false,
   requiresOAuth: true,

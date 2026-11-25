@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint app components lib middleware.ts next.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --loader ./tests/ts-resolver.mjs --test tests/connectors.test.ts"
+    "test": "node --experimental-strip-types --loader ./tests/ts-resolver.mjs --test tests/connectors.test.ts tests/security-quota.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
