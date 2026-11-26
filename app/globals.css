@@ -3872,6 +3872,13 @@ html, body, .app-frame, .main-area, .page-content {
   .filters-layout {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+  .filter-card {
+    position: static;
+    max-height: none;
+  }
+  .filter-card:not(.filters-open) {
+    display: none;
+  }
   .discovery-controls {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -3889,6 +3896,7 @@ html, body, .app-frame, .main-area, .page-content {
     width: 100%;
   }
   .mobile-filter-toggle {
+    display: inline-flex;
     grid-column: 1 !important;
     grid-row: auto !important;
     width: 100%;
