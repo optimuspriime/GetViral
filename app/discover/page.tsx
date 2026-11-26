@@ -377,7 +377,9 @@ export default function DiscoverPage() {
                       ? [
                           {
                             id: `snap-${creatorId}-fresh-r`,
-                            metricName: (fresh.reachMetric || "avg_views") as "avg_views" | "avg_live_viewers",
+                            metricName: (fresh.reachMetric === "avg_live_viewers"
+                              ? "avg_live_viewers"
+                              : "avg_video_views") as "avg_video_views" | "avg_live_viewers",
                             value: fresh.reach,
                             unit: fresh.reachMetric === "avg_live_viewers" ? ("count" as const) : ("views" as const),
                             collectedAt: data.fetchedAt || new Date().toISOString(),

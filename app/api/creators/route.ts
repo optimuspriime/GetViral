@@ -87,7 +87,8 @@ export async function GET(request: Request) {
               ? [
                   {
                     id: `snap-${c.id}-reach`,
-                    metricName: c.reachMetric || "avg_views",
+                    metricName:
+                      c.reachMetric === "avg_live_viewers" ? "avg_live_viewers" : "avg_video_views",
                     value: c.reach,
                     unit: c.reachMetric === "avg_live_viewers" ? ("count" as const) : ("views" as const),
                     collectedAt: c.fetchedAt,

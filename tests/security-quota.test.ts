@@ -13,6 +13,7 @@ import { getDefaultSubscription, GUEST_PREVIEW_QUOTA, SUBSCRIPTION_TIERS } from 
 import { refreshSavedCreatorsFromConnectors } from "../lib/api-fetcher";
 import { INTEGRATIONS } from "../lib/integrations";
 import { detectCreatorCountry } from "../lib/country-detector";
+import { currentReach } from "../lib/metrics";
 
 test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
   await t.test("1. Signed Guest Tokens reject tampering and invalid signatures", () => {
@@ -146,5 +147,59 @@ test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
     assert.equal(detectCreatorCountry("xqc", "xQc", "Variety stream"), null);
     assert.equal(detectCreatorCountry("carryminati", "CarryMinati", "Hindi comedy creator"), "India");
     assert.equal(detectCreatorCountry("creatorusa", "LA Vlog", "Los Angeles, California"), "United States");
+  });
+
+  await t.test("10. YouTube currentReach resolves both avg_video_views and avg_views snapshots", () => {
+    const commonAccount = {
+      id: "yt-1",
+      platform: "YouTube" as const,
+      handle: "@mrbeast",
+      profileUrl: "https://www.youtube.com/@mrbeast",
+      activity: "Active",
+    };
+
+    assert.equal(
+      currentReach({
+        ...commonAccount,
+        snapshots: [
+          {
+            id: "s1",
+            metricName: "avg_video_views",
+            value: 145000000,
+            unit: "views",
+            collectedAt: "2026-11-26T00:00:00.000Z",
+            windowStart: null,
+            windowEnd: null,
+            periodLabel: null,
+            sampleSize: 10,
+            source: "YouTube Data API v3",
+            status: "public",
+          },
+        ],
+      }),
+      145000000,
+    );
+
+    assert.equal(
+      currentReach({
+        ...commonAccount,
+        snapshots: [
+          {
+            id: "s2",
+            metricName: "avg_views",
+            value: 92000000,
+            unit: "views",
+            collectedAt: "2026-11-26T00:00:00.000Z",
+            windowStart: null,
+            windowEnd: null,
+            periodLabel: null,
+            sampleSize: 10,
+            source: "YouTube Data API v3",
+            status: "public",
+          },
+        ],
+      }),
+      92000000,
+    );
   });
 });

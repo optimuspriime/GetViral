@@ -38,7 +38,13 @@ export function currentFollowers(account: PlatformAccount): number | null {
 
 export function currentReach(account: PlatformAccount): number | null {
   const metric = reachMetricName(account);
-  return metric ? (latestMetric(account, metric)?.value ?? null) : null;
+  if (!metric) return null;
+  const primary = latestMetric(account, metric)?.value;
+  if (primary !== undefined && primary !== null) return primary;
+  if (metric === "avg_video_views") {
+    return latestMetric(account, "avg_views")?.value ?? null;
+  }
+  return null;
 }
 
 export function formatCompact(value: number | null | undefined): string {
