@@ -1896,7 +1896,7 @@ option { background: #f6fbf4; color: #274c31; }
 /* Modal Backdrop */
 .modal-backdrop {
   align-items: center;
-  background: rgba(15, 23, 19, 0.6);
+  background: rgba(15, 23, 19, 0.62);
   backdrop-filter: blur(4px);
   bottom: 0;
   display: flex;
@@ -1907,11 +1907,6 @@ option { background: #f6fbf4; color: #274c31; }
   right: 0;
   top: 0;
   z-index: 2000;
-  animation: fadeInModal 0.18s ease-out;
-}
-@keyframes fadeInModal {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 /* Command Palette */
@@ -3022,16 +3017,17 @@ option { background: #f6fbf4; color: #274c31; }
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(14, 30, 19, 0.55);
+  background: rgba(14, 30, 19, 0.62);
   backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 1000;
+  z-index: 2000;
 }
 .pricing-modal-card {
   background: #ffffff;
+  opacity: 1;
   border-radius: 22px;
   max-width: 980px;
   width: 100%;

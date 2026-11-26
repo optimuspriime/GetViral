@@ -1767,16 +1767,43 @@ export default function DiscoverPage() {
               /* Empty Search State */
               <div className="empty-state" style={{ padding: "48px 24px" }}>
                 <span className="empty-icon">
-                  <UserRoundSearch size={24} />
+                  {isQuotaExhausted && filters.query ? <Lock size={24} /> : <UserRoundSearch size={24} />}
                 </span>
                 <strong style={{ fontSize: 16, marginTop: 12 }}>
-                  {filters.query ? `No creators found for "${filters.query}"` : "Discover Creators Across Live Platforms"}
+                  {isQuotaExhausted && filters.query
+                    ? isGuest
+                      ? "Guest Preview Limit Reached (0 / 5)"
+                      : "Monthly Search Quota Reached"
+                    : filters.query
+                      ? `No creators found for "${filters.query}"`
+                      : "Discover Creators Across Live Platforms"}
                 </strong>
                 <p style={{ maxWidth: 480, margin: "8px auto 20px" }}>
-                  {filters.query
-                    ? getEmptyFilterGuidance(filters, providerSummary)
-                    : "Search YouTube & Twitch by keyword when active, look up Kick creators by exact @handle, or use Direct Handle Lookup below."}
+                  {isQuotaExhausted && filters.query
+                    ? isGuest
+                      ? `You have used all 5 preview searches before querying "${filters.query}". Sign in free to unlock 50 monthly creator searches.`
+                      : `Your monthly search quota is exhausted (0 remaining), so "${filters.query}" could not run live. Upgrade your plan to continue.`
+                    : filters.query
+                      ? getEmptyFilterGuidance(filters, providerSummary)
+                      : "Search YouTube & Twitch by keyword when active, look up Kick creators by exact @handle, or use Direct Handle Lookup below."}
                 </p>
+
+                {isQuotaExhausted && filters.query && (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                    {isGuest && (
+                      <Link href="/auth" className="button button-primary button-sm">
+                        Sign In Free (50 Searches)
+                      </Link>
+                    )}
+                    <button
+                      type="button"
+                      className="button button-secondary button-sm"
+                      onClick={() => setPricingModalOpen(true)}
+                    >
+                      View Plans
+                    </button>
+                  </div>
+                )}
 
                 {/* Quick suggestions separated by Kick @handle vs Keyword */}
                 <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 20 }}>

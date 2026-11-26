@@ -90,7 +90,7 @@ export default function CreatorProfilePage() {
                       ? [
                           {
                             id: `snap-${p.id}-r`,
-                            metricName: p.reachMetric || "avg_views",
+                            metricName: p.reachMetric === "avg_live_viewers" ? "avg_live_viewers" : "avg_video_views",
                             value: Number(p.reach),
                             unit: (p.reachMetric === "avg_live_viewers" ? "count" : "views") as "count" | "views",
                             collectedAt: p.fetchedAt || data.fetchedAt || new Date().toISOString(),
