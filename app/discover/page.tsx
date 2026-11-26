@@ -170,8 +170,24 @@ export default function DiscoverPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
   const [importResult, setImportResult] = useState<Partial<Creator> | null>(null);
+  const [activePlatforms, setActivePlatforms] = useState<Record<string, boolean>>({ Kick: true });
   const importDialogRef = useRef<HTMLDivElement>(null);
   const importSelectRef = useRef<HTMLSelectElement>(null);
+
+  useEffect(() => {
+    fetch("/api/integrations")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data?.integrations)) {
+          const map: Record<string, boolean> = {};
+          for (const item of data.integrations as Array<{ platform: string; connected: boolean }>) {
+            map[item.platform] = Boolean(item.connected);
+          }
+          setActivePlatforms(map);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useDialogAccessibility(
     importModalOpen,
@@ -1897,8 +1913,16 @@ export default function DiscoverPage() {
                     value={importPlatform}
                     onChange={(e) => setImportPlatform(e.target.value as Platform)}
                   >
-                    <option value="YouTube">YouTube (Channel Lookup — Service Pending)</option>
-                    <option value="Twitch">Twitch (Channel Lookup — Service Pending)</option>
+                    <option value="YouTube">
+                      {activePlatforms.YouTube
+                        ? "YouTube (Channel @handle Lookup — Active)"
+                        : "YouTube (Channel Lookup — Service Pending)"}
+                    </option>
+                    <option value="Twitch">
+                      {activePlatforms.Twitch
+                        ? "Twitch (Channel Lookup — Active)"
+                        : "Twitch (Channel Lookup — Service Pending)"}
+                    </option>
                     <option value="Kick">Kick (Exact @handle Lookup — Active)</option>
                     <option value="TikTok">TikTok (Requires Creator OAuth)</option>
                     <option value="Instagram">Instagram (Requires Meta Professional OAuth)</option>
