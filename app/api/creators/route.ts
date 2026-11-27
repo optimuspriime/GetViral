@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import type { Creator, Platform } from "@/lib/model";
 import { federatedSearch } from "@/lib/connectors/federated";
+import { getLiveBrowseCreators } from "@/lib/connectors/browse";
+import type { ConnectorStatus, NormalizedCreator } from "@/lib/connectors/types";
+import { resolveCountryToIso, resolveLanguageToIso } from "@/lib/creator-metadata";
 import { loadUserAccountData, saveCreatorsToSupabase, syncUserListsToSupabase } from "@/lib/supabase/db-sync";
 import { attachGuestCookie, resolveServerSession } from "@/lib/auth/server-session";
 import {
@@ -9,16 +12,192 @@ import {
   consumeServerQuota,
 } from "@/lib/quota/server-quota";
 
+function normalizeToWorkspaceCreator(c: NormalizedCreator): Creator {
+  return {
+    id: c.id,
+    name: c.name,
+    category: c.category || "General",
+    language: c.language ?? null,
+    creatorCountry: c.country,
+    creatorCountrySource: c.country ? "Live Platform API" : null,
+    audienceInsights: [],
+    bio: c.bio || `${c.name} on ${c.platform}`,
+    avatar: c.avatarUrl || "",
+    businessContact: c.businessContact,
+    accounts: [
+      {
+        id: `acc-${c.id}`,
+        platform: c.platform,
+        handle: c.handle,
+        profileUrl: c.profileUrl,
+        activity: c.isLiveStream ? "Live Now" : "Active",
+        snapshots: [
+          ...(c.followers !== null
+            ? [
+                {
+                  id: `snap-${c.id}-followers`,
+                  metricName: "followers",
+                  value: c.followers,
+                  unit: "count" as const,
+                  collectedAt: c.fetchedAt,
+                  windowStart: null,
+                  windowEnd: null,
+                  periodLabel: null,
+                  sampleSize: null,
+                  source: c.source,
+                  status: "public" as const,
+                },
+              ]
+            : []),
+          ...(c.reach !== null
+            ? [
+                {
+                  id: `snap-${c.id}-reach`,
+                  metricName:
+                    c.reachMetric === "avg_live_viewers" ? "avg_live_viewers" : "avg_video_views",
+                  value: c.reach,
+                  unit: c.reachMetric === "avg_live_viewers" ? ("count" as const) : ("views" as const),
+                  collectedAt: c.fetchedAt,
+                  windowStart: null,
+                  windowEnd: null,
+                  periodLabel: c.isLiveStream
+                    ? "Current live stream"
+                    : "Channel lifetime average (total views ÷ videos)",
+                  sampleSize: null,
+                  source: c.source,
+                  status: "public" as const,
+                },
+              ]
+            : []),
+        ],
+      },
+    ],
+  };
+}
+
+function buildFilteredCreatorsAndStatuses(
+  rawCreators: NormalizedCreator[],
+  rawStatuses: Record<Platform, { status: ConnectorStatus; itemCount: number; message?: string; capabilities: unknown; isLive: boolean; cached?: boolean }>,
+  filters: {
+    category: string | null;
+    country: string | null;
+    language: string | null;
+    minFollowers: number | null;
+    maxFollowers: number | null;
+  },
+  isAdmin: boolean,
+) {
+  let filtered = rawCreators.map(normalizeToWorkspaceCreator);
+
+  if (filters.category && filters.category !== "All categories") {
+    filtered = filtered.filter((c) => (c.category || "").toLowerCase() === filters.category!.toLowerCase());
+  }
+
+  if (filters.country) {
+    filtered = filtered.filter((c) =>
+      c.creatorCountry?.toLowerCase().includes(filters.country!.toLowerCase()),
+    );
+  }
+
+  if (filters.language && filters.language !== "All languages") {
+    filtered = filtered.filter(
+      (c) => (c.language || "").toLowerCase() === filters.language!.toLowerCase(),
+    );
+  }
+
+  if (filters.minFollowers !== null || filters.maxFollowers !== null) {
+    filtered = filtered.filter((c) =>
+      c.accounts.some((a) => {
+        const fSnap = a.snapshots.find((s) => s.metricName === "followers")?.value ?? null;
+        if (fSnap === null) return false;
+        if (filters.minFollowers !== null && fSnap < filters.minFollowers) return false;
+        if (filters.maxFollowers !== null && fSnap > filters.maxFollowers) return false;
+        return true;
+      }),
+    );
+  }
+
+  const displayedByPlatform: Partial<Record<Platform, number>> = {};
+  for (const creator of filtered) {
+    for (const acc of creator.accounts) {
+      displayedByPlatform[acc.platform] = (displayedByPlatform[acc.platform] ?? 0) + 1;
+    }
+  }
+
+  const succeededProviders: Platform[] = [];
+  const failedProviders: Platform[] = [];
+  const unconfiguredProviders: Platform[] = [];
+  const unsupportedProviders: Platform[] = [];
+
+  const finalStatuses = Object.fromEntries(
+    (Object.entries(rawStatuses) as [Platform, typeof rawStatuses[Platform]][]).map(([p, statusObj]) => {
+      const shownCount = displayedByPlatform[p] ?? 0;
+      const upstreamCount = statusObj.itemCount;
+      let msg = statusObj.message;
+
+      if (statusObj.status === "success") {
+        succeededProviders.push(p);
+        if (upstreamCount > shownCount && shownCount > 0) {
+          msg = `${shownCount} displayed (${upstreamCount} fetched before filters)`;
+        }
+      } else if (statusObj.status === "error" || statusObj.status === "rate_limited") {
+        failedProviders.push(p);
+      } else if (statusObj.status === "unconfigured") {
+        unconfiguredProviders.push(p);
+        if (!isAdmin) {
+          msg = `${p} live search is temporarily pending activation.`;
+        }
+      } else if (statusObj.status === "unsupported_operation") {
+        unsupportedProviders.push(p);
+      }
+
+      const capObj = statusObj.capabilities as { requiresApiKey?: boolean; authorizationRequirement?: string };
+      return [
+        p,
+        {
+          ...statusObj,
+          itemCount: statusObj.status === "success" ? shownCount : statusObj.itemCount,
+          fetchedCount: upstreamCount,
+          message: msg,
+          capabilities: isAdmin
+            ? statusObj.capabilities
+            : {
+                ...capObj,
+                authorizationRequirement: capObj.requiresApiKey
+                  ? `Managed server integration for ${p}.`
+                  : capObj.authorizationRequirement,
+              },
+        },
+      ];
+    }),
+  );
+
+  return {
+    filtered,
+    finalStatuses,
+    succeededProviders,
+    failedProviders,
+    unconfiguredProviders,
+    unsupportedProviders,
+  };
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim() || "";
+  const browse = searchParams.get("browse") === "1";
   const platform = searchParams.get("platform") as Platform | "All platforms" | null;
   const category = searchParams.get("category");
   const country = searchParams.get("country");
+  const language = searchParams.get("language");
+  const minRaw = searchParams.get("minFollowers");
+  const maxRaw = searchParams.get("maxFollowers");
+  const minFollowers = minRaw && !Number.isNaN(Number(minRaw)) ? Number(minRaw) : null;
+  const maxFollowers = maxRaw && !Number.isNaN(Number(maxRaw)) ? Number(maxRaw) : null;
 
   const session = await resolveServerSession(request);
 
-  // 1. If query is provided, enforce server-side quota BEFORE running live federated search
+  // 1. Live explicit search query (quota-gated on server)
   if (q) {
     const quotaCheck = await checkServerQuotaAvailable(session);
     if (!quotaCheck.allowed) {
@@ -41,144 +220,39 @@ export async function GET(request: Request) {
       return exhaustedRes;
     }
 
+    const regionCode = resolveCountryToIso(country);
+    const relevanceLanguage = resolveLanguageToIso(language);
+
     const federated = await federatedSearch(q, {
       platform: platform && platform !== "All platforms" ? platform : undefined,
-      limit: 20,
+      limit: 50,
+      regionCode,
+      relevanceLanguage,
+      maxFollowers,
     });
 
-    // Live results must strictly come from real platform connectors (never mixed with DB/seed rows)
-    const liveAsCreators: Creator[] = federated.creators.map((c) => ({
-      id: c.id,
-      name: c.name,
-      category: c.category || "General",
-      language: c.language || "English",
-      creatorCountry: c.country,
-      creatorCountrySource: c.country ? "Live Platform API" : null,
-      audienceInsights: [],
-      bio: c.bio || `${c.name} on ${c.platform}`,
-      avatar: c.avatarUrl || "",
-      businessContact: c.businessContact,
-      accounts: [
-        {
-          id: `acc-${c.id}`,
-          platform: c.platform,
-          handle: c.handle,
-          profileUrl: c.profileUrl,
-          activity: c.isLiveStream ? "Live Now" : "Active",
-          snapshots: [
-            ...(c.followers !== null
-              ? [
-                  {
-                    id: `snap-${c.id}-followers`,
-                    metricName: "followers",
-                    value: c.followers,
-                    unit: "count" as const,
-                    collectedAt: c.fetchedAt,
-                    windowStart: null,
-                    windowEnd: null,
-                    periodLabel: null,
-                    sampleSize: null,
-                    source: c.source,
-                    status: "public" as const,
-                  },
-                ]
-              : []),
-            ...(c.reach !== null
-              ? [
-                  {
-                    id: `snap-${c.id}-reach`,
-                    metricName:
-                      c.reachMetric === "avg_live_viewers" ? "avg_live_viewers" : "avg_video_views",
-                    value: c.reach,
-                    unit: c.reachMetric === "avg_live_viewers" ? ("count" as const) : ("views" as const),
-                    collectedAt: c.fetchedAt,
-                    windowStart: null,
-                    windowEnd: null,
-                    periodLabel: c.isLiveStream ? "Current live stream" : "Recent content",
-                    sampleSize: 10,
-                    source: c.source,
-                    status: "public" as const,
-                  },
-                ]
-              : []),
-          ],
-        },
-      ],
-    }));
-
-    let filtered = liveAsCreators;
-
-    if (category && category !== "All categories") {
-      filtered = filtered.filter((c) => c.category === category);
-    }
-
-    if (country) {
-      filtered = filtered.filter((c) =>
-        c.creatorCountry?.toLowerCase().includes(country.toLowerCase()),
-      );
-    }
-
-    const succeededProviders: Platform[] = [];
-    const failedProviders: Platform[] = [];
-    const unconfiguredProviders: Platform[] = [];
-    const unsupportedProviders: Platform[] = [];
-
-    (Object.entries(federated.connectorStatuses) as [Platform, typeof federated.connectorStatuses[Platform]][]).forEach(
-      ([p, statusObj]) => {
-        if (statusObj.status === "success") {
-          succeededProviders.push(p);
-        } else if (statusObj.status === "error" || statusObj.status === "rate_limited") {
-          failedProviders.push(p);
-        } else if (statusObj.status === "unconfigured") {
-          unconfiguredProviders.push(p);
-        } else if (statusObj.status === "unsupported_operation") {
-          unsupportedProviders.push(p);
-        }
-      },
+    const processed = buildFilteredCreatorsAndStatuses(
+      federated.creators,
+      federated.connectorStatuses,
+      { category, country, language, minFollowers, maxFollowers },
+      session.isAdmin,
     );
 
-    // Charge quota ONLY if at least one real provider succeeded and returned live results
-    const chargeSearch = succeededProviders.length > 0 && filtered.length > 0;
+    // Charge quota ONLY if at least one real provider succeeded and returned results
+    const chargeSearch = processed.succeededProviders.length > 0 && processed.filtered.length > 0;
     const latestSubscription = chargeSearch
       ? await consumeServerQuota(session)
       : quotaCheck.subscription;
 
-    // Sanitize internal server configuration details for non-admin callers
-    const publicStatuses = session.isAdmin
-      ? federated.connectorStatuses
-      : Object.fromEntries(
-          (
-            Object.entries(federated.connectorStatuses) as [
-              Platform,
-              typeof federated.connectorStatuses[Platform],
-            ][]
-          ).map(([p, statusObj]) => [
-            p,
-            {
-              ...statusObj,
-              message:
-                statusObj.status === "unconfigured"
-                  ? `${p} live search is temporarily pending activation.`
-                  : statusObj.message,
-              capabilities: {
-                ...statusObj.capabilities,
-                authorizationRequirement: statusObj.capabilities.requiresApiKey
-                  ? `Managed server integration for ${p}.`
-                  : statusObj.capabilities.authorizationRequirement,
-              },
-            },
-          ]),
-        );
-
     const response = NextResponse.json({
       query: q,
-      total: filtered.length,
-      creators: filtered,
-      connectorStatuses: publicStatuses,
-      succeededProviders,
-      failedProviders,
-      unconfiguredProviders,
-      unsupportedProviders,
+      total: processed.filtered.length,
+      creators: processed.filtered,
+      connectorStatuses: processed.finalStatuses,
+      succeededProviders: processed.succeededProviders,
+      failedProviders: processed.failedProviders,
+      unconfiguredProviders: processed.unconfiguredProviders,
+      unsupportedProviders: processed.unsupportedProviders,
       chargeSearch,
       subscription: latestSubscription,
       source: "Live Platform Discovery",
@@ -190,7 +264,44 @@ export async function GET(request: Request) {
     return response;
   }
 
-  // 2. If no query is provided: guests get 0 creators; signed-in users get ONLY their account's saved creators
+  // 2. Server-cached live API browse feed (populates /discover on load & filter browse without charging user quota)
+  if (browse) {
+    const quotaCheck = await checkServerQuotaAvailable(session);
+    const browseData = await getLiveBrowseCreators({
+      platform,
+      category,
+      country,
+      language,
+      maxFollowers,
+    });
+
+    const processed = buildFilteredCreatorsAndStatuses(
+      browseData.creators,
+      browseData.connectorStatuses,
+      { category, country, language, minFollowers, maxFollowers },
+      session.isAdmin,
+    );
+
+    const browseRes = NextResponse.json({
+      query: "",
+      total: processed.filtered.length,
+      creators: processed.filtered,
+      connectorStatuses: processed.finalStatuses,
+      succeededProviders: processed.succeededProviders,
+      failedProviders: processed.failedProviders,
+      unconfiguredProviders: processed.unconfiguredProviders,
+      unsupportedProviders: processed.unsupportedProviders,
+      chargeSearch: false,
+      subscription: quotaCheck.subscription,
+      source: "Live API Browse (15m Server Cache)",
+      isLive: false,
+      isBrowse: true,
+    });
+    attachGuestCookie(browseRes, session);
+    return browseRes;
+  }
+
+  // 3. No query & not browse: guests get 0 saved creators; signed-in users get their workspace's saved creators
   if (!session.authenticated || !session.userId) {
     const guestRes = NextResponse.json({
       query: "",

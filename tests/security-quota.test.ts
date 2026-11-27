@@ -13,6 +13,12 @@ import { getDefaultSubscription, GUEST_PREVIEW_QUOTA, SUBSCRIPTION_TIERS } from 
 import { refreshSavedCreatorsFromConnectors } from "../lib/api-fetcher";
 import { INTEGRATIONS } from "../lib/integrations";
 import { detectCreatorCountry } from "../lib/country-detector";
+import {
+  detectCreatorLanguage,
+  extractYouTubeCategory,
+  resolveCountryToIso,
+  resolveLanguageToIso,
+} from "../lib/creator-metadata";
 import { currentReach } from "../lib/metrics";
 
 test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
@@ -201,5 +207,27 @@ test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
       }),
       92000000,
     );
+  });
+
+  await t.test("11. Creator language & category metadata extract real Hindi/Gaming signals accurately", () => {
+    assert.equal(detectCreatorLanguage("hi-IN"), "Hindi");
+    assert.equal(detectCreatorLanguage("hi"), "Hindi");
+    assert.equal(
+      detectCreatorLanguage(null, null, "नमस्ते दोस्तों गेमिंग चैनल में स्वागत है"),
+      "Hindi",
+    );
+    assert.equal(detectCreatorLanguage(null, null, "Tech reviews channel"), "English");
+    assert.equal(detectCreatorLanguage(null, null, ""), null);
+
+    assert.equal(
+      extractYouTubeCategory(["https://en.wikipedia.org/wiki/Video_game_culture"]),
+      "Gaming",
+    );
+    assert.equal(
+      extractYouTubeCategory(["https://en.wikipedia.org/wiki/Technology"]),
+      "Technology",
+    );
+    assert.equal(resolveCountryToIso("India"), "IN");
+    assert.equal(resolveLanguageToIso("Hindi"), "hi");
   });
 });

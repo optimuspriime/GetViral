@@ -54,9 +54,9 @@ export default function CreatorProfilePage() {
               id: p.id || params.id,
               name: p.name || p.handle,
               category: p.category || "General",
-              language: p.language || "English",
+              language: p.language ?? null,
               creatorCountry: p.country || null,
-              creatorCountrySource: "Live Platform API",
+              creatorCountrySource: p.country ? "Live Platform API" : null,
               bio: p.bio || `${p.name || p.handle} on ${p.platform}`,
               avatar: p.avatarUrl || "",
               businessContact: p.businessContact || null,
@@ -96,8 +96,10 @@ export default function CreatorProfilePage() {
                             collectedAt: p.fetchedAt || data.fetchedAt || new Date().toISOString(),
                             windowStart: null,
                             windowEnd: null,
-                            periodLabel: p.isLiveStream ? "Current live stream" : "Recent content",
-                            sampleSize: 10,
+                            periodLabel: p.isLiveStream
+                              ? "Current live stream"
+                              : "Channel lifetime average (total views ÷ videos)",
+                            sampleSize: null,
                             source: data.source || `${p.platform} API`,
                             status: "public" as const,
                           },
@@ -126,7 +128,7 @@ export default function CreatorProfilePage() {
               ? "Querying live platform API for channel details."
               : "This profile is not currently in your active workspace catalog."}
           </p>
-          <Link href="/discover" className="button button-secondary button-sm">
+          <Link href="/discover?restore=1" className="button button-secondary button-sm">
             Back to discovery
           </Link>
         </div>
@@ -173,7 +175,7 @@ export default function CreatorProfilePage() {
   return (
     <>
       <div className="profile-top-nav">
-        <Link href="/discover" className="back-link">
+        <Link href="/discover?restore=1" className="back-link">
           <ArrowLeft size={14} /> Back to discovery
         </Link>
         <button className="button button-secondary button-sm" onClick={handleCopyLink} type="button">
@@ -204,7 +206,7 @@ export default function CreatorProfilePage() {
 
           <div className="profile-main">
             <div className="eyebrow">
-              <Sparkles size={11} className="inline-icon" /> VERIFIED CREATOR INTELLIGENCE
+              <Sparkles size={11} className="inline-icon" /> API-FETCHED CREATOR PROFILE
             </div>
             <h1>{creator.name}</h1>
             <div className="profile-meta">
@@ -226,7 +228,7 @@ export default function CreatorProfilePage() {
                 </a>
               ))}
               <span className="meta-tag">{creator.category ?? "General"}</span>
-              <span className="meta-tag">{creator.language ?? "English"}</span>
+              <span className="meta-tag">{creator.language ?? "Not specified"}</span>
               <Link
                 href={`/discover?country=${encodeURIComponent(creator.creatorCountry ?? "")}`}
                 className="meta-tag meta-country-tag"
@@ -370,17 +372,18 @@ export default function CreatorProfilePage() {
           </div>
 
           <div className="definition">
-            <strong>Verification Standard:</strong> Growth snapshots represent recorded platform
-            observations. Live concurrency metrics represent 30-day mean viewers. Video views
-            reflect recent public post distributions.
+            <strong>Data Provenance &amp; Calculation:</strong> Metrics are fetched from official
+            platform endpoints (not platform verification badges). YouTube Avg. Video Views equals{" "}
+            <em>total channel views ÷ total uploaded videos</em> (lifetime channel stats). Kick &amp;
+            Twitch reach shows real-time concurrent broadcast viewers when streaming live.
           </div>
         </section>
 
         <section className="card">
           <div className="card-head">
             <div>
-              <h2 className="card-title">Profile & Audience Verification</h2>
-              <p className="card-caption">Verified sources and public metadata</p>
+              <h2 className="card-title">Profile &amp; Audience Provenance</h2>
+              <p className="card-caption">API-fetched sources and authorization status</p>
             </div>
           </div>
 
@@ -388,37 +391,37 @@ export default function CreatorProfilePage() {
             <Detail
               label="Home Country / Market"
               value={`${getCountryFlag(creator.creatorCountry)} ${creator.creatorCountry ?? "Global"}`}
-              source={creator.creatorCountrySource ?? "Verified Channel Listing"}
+              source={creator.creatorCountrySource ?? "Platform Channel Profile"}
             />
 
             {creator.audienceInsights.length > 0 ? (
               creator.audienceInsights.map((insight) => (
                 <Detail
                   key={`${insight.dimension}:${insight.value}`}
-                  label={`Audience · ${insight.value}`}
+                  label={`Audience · ${insight.value}${
+                    insight.status === "estimated" ? " (Estimated)" : ""
+                  }`}
                   value={`${insight.amount ?? 0}${insight.unit} audience share`}
-                  source={`${insight.source} · confidence ${Math.round(
-                    (insight.confidence ?? 0.95) * 100,
-                  )}%`}
+                  source={`${insight.source} · ${formatDateTime(insight.collectedAt)}`}
                 />
               ))
             ) : (
               <Detail
                 label="Audience Geography"
-                value="Global English/Spanish Distribution"
-                source="Channel Analytics"
+                value="Unavailable (Creator OAuth required)"
+                source="Private creator analytics not authorized"
               />
             )}
 
             <Detail
               label="Content Category"
               value={creator.category ?? "General"}
-              source="Official Platform Taxonomy"
+              source="Platform Taxonomy / Topic Metadata"
             />
             <Detail
               label="Primary Language"
-              value={creator.language ?? "English"}
-              source="Audio & Subtitle Tracks"
+              value={creator.language ?? "Not specified"}
+              source="Channel Metadata & Script Analysis"
             />
           </dl>
 
@@ -451,7 +454,7 @@ export default function CreatorProfilePage() {
                 }}
               >
                 <CheckCircle2 size={12} className="text-green" />
-                <span>Verified Public Channel Listing</span>
+                <span>Public Channel Bio Listing (unverified)</span>
               </div>
 
               <dl className="detail-list contact-details">
@@ -564,9 +567,9 @@ function AccountMetricCards({ account }: { account: PlatformAccount }) {
           <div className="metric-value">{reach === null ? "—" : formatNumber(reach)}</div>
           <div className="metric-sub">
             {reachMetric === "avg_live_viewers"
-              ? `Mean concurrent viewers · ${snapshot?.periodLabel ?? "30-day window"}`
+              ? `Live viewers · ${snapshot?.periodLabel ?? "Current live stream"}`
               : reachMetric === "avg_video_views"
-              ? `Average views per post · ${snapshot?.periodLabel ?? "recent uploads"}`
+              ? `${snapshot?.periodLabel ?? "Channel lifetime average (total views ÷ videos)"}`
               : "Platform reach metric"}
           </div>
         </div>

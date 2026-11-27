@@ -2,6 +2,7 @@ import "server-only";
 import type { ConnectorResponse, NormalizedCreator, PlatformCapability } from "./types";
 import { searchCache } from "./cache";
 import { detectCreatorCountry, resolveCountryCode } from "@/lib/country-detector";
+import { detectCreatorLanguage } from "@/lib/creator-metadata";
 
 export const kickCapabilities: PlatformCapability = {
   platform: "Kick",
@@ -138,6 +139,7 @@ export async function lookupKick(
     const country =
       resolveCountryCode(data.user?.country) ||
       detectCreatorCountry(cleanSlug, username, data.user?.bio);
+    const language = detectCreatorLanguage(null, username, data.user?.bio);
 
     const emailMatch = (data.user?.bio ?? "").match(
       /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
@@ -163,6 +165,7 @@ export async function lookupKick(
       reachMetric: "avg_live_viewers",
       country,
       category: categoryName,
+      language,
       businessContact,
       isLiveStream: isLive,
       liveViewerCount: viewerCount,

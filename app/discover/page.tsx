@@ -119,7 +119,7 @@ function getEmptyFilterGuidance(
     suggestions.push(`clearing the language filter (${filters.language})`);
   }
   if (filters.hasContact) {
-    suggestions.push("unchecking 'Direct email available'");
+    suggestions.push("unchecking 'Public business email only'");
   }
   if (filters.platform && filters.platform !== "All platforms") {
     suggestions.push(`switching from ${filters.platform} to "All platforms"`);
@@ -139,22 +139,113 @@ function getEmptyFilterGuidance(
   return `Try ${suggestions.slice(0, 2).join(" or ")}.`;
 }
 
+const DISCOVER_SESSION_KEY = "gv_discover_state_v1";
+
+type SavedDiscoverSession = {
+  searchInput: string;
+  filters: Filters;
+  sort: string;
+  currentPage: number;
+  liveSearchResults: Creator[] | null;
+  isBrowseFeed: boolean;
+  connectorStatuses: Record<string, { status: string; itemCount?: number; count?: number; message?: string }>;
+  searchProvenance: { source: string; isLive: boolean; retrievedAt?: string } | null;
+  providerSummary: {
+    succeeded: string[];
+    failed: string[];
+    unconfigured: string[];
+    unsupported: string[];
+    chargeSearch: boolean;
+  } | null;
+  scrollY: number;
+  savedAt: number;
+};
+
+function buildCreatorApiQuery(f: Filters): string {
+  const sp = new URLSearchParams();
+  if (f.platform !== "All platforms") sp.set("platform", f.platform);
+  if (f.category !== "All categories") sp.set("category", f.category);
+  if (f.country) sp.set("country", f.country);
+  if (f.language !== "All languages") sp.set("language", f.language);
+  if (f.minFollowers) sp.set("minFollowers", f.minFollowers);
+  if (f.maxFollowers) sp.set("maxFollowers", f.maxFollowers);
+  return sp.toString();
+}
+
+function buildDiscoverBrowserUrl(f: Filters): string {
+  const sp = new URLSearchParams();
+  if (f.query.trim()) sp.set("q", f.query.trim());
+  if (f.platform !== initialFilters.platform) sp.set("platform", f.platform);
+  if (f.category !== initialFilters.category) sp.set("category", f.category);
+  if (f.country) sp.set("country", f.country);
+  if (f.language !== initialFilters.language) sp.set("language", f.language);
+  if (f.minFollowers) sp.set("minFollowers", f.minFollowers);
+  if (f.maxFollowers) sp.set("maxFollowers", f.maxFollowers);
+  if (f.hasContact) sp.set("hasContact", "true");
+  const qs = sp.toString();
+  return qs ? `/discover?${qs}` : "/discover";
+}
+
+function readDiscoverSession(): SavedDiscoverSession | null {
+  try {
+    const raw = window.sessionStorage.getItem(DISCOVER_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SavedDiscoverSession;
+    if (!parsed || Date.now() - (parsed.savedAt || 0) > 2 * 60 * 60 * 1000) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveDiscoverSession(state: Omit<SavedDiscoverSession, "savedAt">) {
+  try {
+    window.sessionStorage.setItem(
+      DISCOVER_SESSION_KEY,
+      JSON.stringify({ ...state, savedAt: Date.now() }),
+    );
+    if (Array.isArray(state.liveSearchResults)) {
+      window.sessionStorage.setItem("gv_recent_live_creators_v1", JSON.stringify(state.liveSearchResults));
+    }
+  } catch {}
+}
+
+function formatCollectedTimestamp(iso?: string | null): string {
+  if (!iso) return "Unknown time";
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return dt.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function DiscoverPage() {
   const router = useRouter();
   const [filters, setFilters] = useState(initialFilters);
   const [sort, setSort] = useState("followers");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 50;
+  const pageSize = 100;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [refreshingCreatorId, setRefreshingCreatorId] = useState<string | null>(null);
 
-  // Live federated search state
+  // Live federated search & browse state
   const [isSearching, setIsSearching] = useState(false);
+  const [isBrowseFeed, setIsBrowseFeed] = useState(false);
   const [liveSearchResults, setLiveSearchResults] = useState<Creator[] | null>(null);
   const [connectorStatuses, setConnectorStatuses] = useState<
     Record<string, { status: string; itemCount?: number; count?: number; message?: string }>
   >({});
-  const [searchProvenance, setSearchProvenance] = useState<{ source: string; isLive: boolean } | null>(null);
+  const [searchProvenance, setSearchProvenance] = useState<{
+    source: string;
+    isLive: boolean;
+    retrievedAt?: string;
+  } | null>(null);
   const [providerSummary, setProviderSummary] = useState<{
     succeeded: string[];
     failed: string[];
@@ -162,6 +253,11 @@ export default function DiscoverPage() {
     unsupported: string[];
     chargeSearch: boolean;
   } | null>(null);
+
+  const browseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestSeqRef = useRef(0);
+  const didMountRef = useRef(false);
+  const skipNextPageResetRef = useRef(false);
 
   // Direct handle lookup modal state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -218,32 +314,92 @@ export default function DiscoverPage() {
 
   const [searchInput, setSearchInput] = useState(filters.query);
 
-  const update = useCallback(<K extends keyof Filters>(key: K, value: Filters[K]) => {
-    setFilters((current) => ({ ...current, [key]: value }));
-  }, []);
+  // Execute zero-quota server-cached live API browse feed
+  const executeBrowseFeed = useCallback(
+    async (overrideFilters?: Filters) => {
+      const activeFilters = overrideFilters ?? filters;
+      const reqId = ++requestSeqRef.current;
+      setIsSearching(true);
 
-  // Execute real federated search
+      try {
+        const qs = buildCreatorApiQuery(activeFilters);
+        const res = await fetch(`/api/creators?browse=1${qs ? `&${qs}` : ""}`);
+        const data = await res.json();
+        if (reqId !== requestSeqRef.current) return;
+
+        if (data?.subscription) {
+          syncServerQuota(data.subscription);
+        }
+
+        if (Array.isArray(data.creators)) {
+          setIsBrowseFeed(true);
+          setLiveSearchResults(data.creators);
+          if (data.connectorStatuses) {
+            setConnectorStatuses(data.connectorStatuses);
+          }
+          const firstCollected = data.creators[0]?.accounts?.[0]?.snapshots?.[0]?.collectedAt;
+          setSearchProvenance({
+            source: data.source || "Live API Browse (15m Server Cache)",
+            isLive: Boolean(data.isLive),
+            retrievedAt: firstCollected || new Date().toISOString(),
+          });
+          setProviderSummary({
+            succeeded: data.succeededProviders || [],
+            failed: data.failedProviders || [],
+            unconfigured: data.unconfiguredProviders || [],
+            unsupported: data.unsupportedProviders || [],
+            chargeSearch: false,
+          });
+        } else {
+          setIsBrowseFeed(true);
+          setLiveSearchResults([]);
+        }
+      } catch {
+        if (reqId === requestSeqRef.current) {
+          setIsBrowseFeed(true);
+          setLiveSearchResults([]);
+        }
+      } finally {
+        if (reqId === requestSeqRef.current) {
+          setIsSearching(false);
+        }
+      }
+    },
+    [filters, syncServerQuota],
+  );
+
+  // Execute real quota-checked federated search
   const executeSearch = useCallback(
-    async (queryToSearch?: string) => {
+    async (queryToSearch?: string, overrideFilters?: Filters) => {
+      const activeFilters = overrideFilters ?? filters;
       const val = (queryToSearch !== undefined ? queryToSearch : searchInput).trim();
       if (!val) {
-        update("query", "");
-        setLiveSearchResults(null);
-        setSearchProvenance(null);
-        setProviderSummary(null);
+        const cleared = { ...activeFilters, query: "" };
+        setFilters(cleared);
+        window.history.replaceState(null, "", buildDiscoverBrowserUrl(cleared));
+        void executeBrowseFeed(cleared);
         return;
       }
 
       const allowed = hasAvailableQuota();
       if (!allowed) return;
 
+      if (browseTimerRef.current) {
+        clearTimeout(browseTimerRef.current);
+        browseTimerRef.current = null;
+      }
+      const reqId = ++requestSeqRef.current;
+      const updatedFilters = { ...activeFilters, query: val };
       setIsSearching(true);
-      update("query", val);
+      setIsBrowseFeed(false);
+      setFilters(updatedFilters);
+      window.history.replaceState(null, "", buildDiscoverBrowserUrl(updatedFilters));
 
       try {
-        const platformParam = filters.platform !== "All platforms" ? `&platform=${encodeURIComponent(filters.platform)}` : "";
-        const res = await fetch(`/api/creators?q=${encodeURIComponent(val)}${platformParam}`);
+        const qs = buildCreatorApiQuery(updatedFilters);
+        const res = await fetch(`/api/creators?q=${encodeURIComponent(val)}${qs ? `&${qs}` : ""}`);
         const data = await res.json();
+        if (reqId !== requestSeqRef.current) return;
 
         if (data?.subscription) {
           syncServerQuota(data.subscription);
@@ -260,16 +416,16 @@ export default function DiscoverPage() {
         }
 
         if (Array.isArray(data.creators)) {
+          setIsBrowseFeed(false);
           setLiveSearchResults(data.creators);
-          try {
-            window.sessionStorage.setItem("gv_recent_live_creators_v1", JSON.stringify(data.creators));
-          } catch {}
           if (data.connectorStatuses) {
             setConnectorStatuses(data.connectorStatuses);
           }
+          const firstCollected = data.creators[0]?.accounts?.[0]?.snapshots?.[0]?.collectedAt;
           setSearchProvenance({
             source: data.source || "Live Federated Platform Connectors",
             isLive: Boolean(data.isLive),
+            retrievedAt: firstCollected || new Date().toISOString(),
           });
           setProviderSummary({
             succeeded: data.succeededProviders || [],
@@ -295,10 +451,9 @@ export default function DiscoverPage() {
               "info",
             );
           } else {
-            // Search was not charged
             if (data.failedProviders?.length > 0 && (!data.succeededProviders || data.succeededProviders.length === 0)) {
               showToast(
-                `All queried providers failed or require credentials. Your search credit was NOT charged.`,
+                "All queried providers failed or require credentials. Your search credit was NOT charged.",
                 "info",
               );
             } else {
@@ -312,38 +467,179 @@ export default function DiscoverPage() {
           setLiveSearchResults([]);
         }
       } catch {
-        showToast("Live federated search request failed. Quota was NOT charged.", "error");
-        setLiveSearchResults([]);
+        if (reqId === requestSeqRef.current) {
+          showToast("Live federated search request failed. Quota was NOT charged.", "error");
+          setLiveSearchResults([]);
+        }
       } finally {
-        setIsSearching(false);
+        if (reqId === requestSeqRef.current) {
+          setIsSearching(false);
+        }
       }
     },
-    [searchInput, hasAvailableQuota, deductSearch, syncServerQuota, setPricingModalOpen, update, filters.platform, subscription.totalQuota, subscription.searchesRemaining, showToast],
+    [
+      filters,
+      searchInput,
+      hasAvailableQuota,
+      deductSearch,
+      syncServerQuota,
+      setPricingModalOpen,
+      subscription.totalQuota,
+      subscription.searchesRemaining,
+      showToast,
+      executeBrowseFeed,
+    ],
   );
 
-  // Parse initial query params
+  const scheduleBrowseRefresh = useCallback(
+    (nextFilters: Filters, debounceMs: number) => {
+      if (browseTimerRef.current) {
+        clearTimeout(browseTimerRef.current);
+      }
+      if (debounceMs <= 0) {
+        void executeBrowseFeed(nextFilters);
+        return;
+      }
+      browseTimerRef.current = setTimeout(() => {
+        browseTimerRef.current = null;
+        void executeBrowseFeed(nextFilters);
+      }, debounceMs);
+    },
+    [executeBrowseFeed],
+  );
+
+  const update = useCallback(
+    <K extends keyof Filters>(key: K, value: Filters[K]) => {
+      setFilters((current) => {
+        const nextFilters = { ...current, [key]: value };
+        window.history.replaceState(null, "", buildDiscoverBrowserUrl(nextFilters));
+
+        if (!nextFilters.query.trim()) {
+          if (key === "platform" || key === "category" || key === "country" || key === "language") {
+            scheduleBrowseRefresh(nextFilters, 0);
+          } else if (key === "minFollowers" || key === "maxFollowers") {
+            scheduleBrowseRefresh(nextFilters, 350);
+          }
+        }
+        return nextFilters;
+      });
+    },
+    [scheduleBrowseRefresh],
+  );
+
+  const applyFollowerPreset = useCallback(
+    (minVal: string, maxVal: string) => {
+      setFilters((current) => {
+        const nextFilters = { ...current, minFollowers: minVal, maxFollowers: maxVal };
+        window.history.replaceState(null, "", buildDiscoverBrowserUrl(nextFilters));
+        if (!nextFilters.query.trim()) {
+          scheduleBrowseRefresh(nextFilters, 0);
+        }
+        return nextFilters;
+      });
+    },
+    [scheduleBrowseRefresh],
+  );
+
+  const resetAllFiltersAndBrowse = useCallback(() => {
+    setFilters(initialFilters);
+    setSearchInput("");
+    try {
+      window.sessionStorage.removeItem(DISCOVER_SESSION_KEY);
+    } catch {}
+    window.history.replaceState(null, "", "/discover");
+    void executeBrowseFeed(initialFilters);
+  }, [executeBrowseFeed]);
+
+  // Parse initial query params OR restore prior discovery session after Back navigation
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const isRestoreParam = params.get("restore") === "1";
+    const navEntry = performance.getEntriesByType?.("navigation")?.[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    const isBackForward = navEntry?.type === "back_forward";
+    const saved = readDiscoverSession();
     const qParam = params.get("q");
-    if (qParam) {
-      setSearchInput(qParam);
-      void executeSearch(qParam);
+
+    const shouldRestore =
+      Boolean(saved && Array.isArray(saved.liveSearchResults)) &&
+      (isRestoreParam || (isBackForward && (!qParam || qParam === saved?.filters.query)));
+
+    if (shouldRestore && saved) {
+      setSearchInput(saved.searchInput);
+      setFilters(saved.filters);
+      setSort(saved.sort || "followers");
+      skipNextPageResetRef.current = true;
+      setCurrentPage(saved.currentPage || 1);
+      setLiveSearchResults(saved.liveSearchResults);
+      setIsBrowseFeed(saved.isBrowseFeed);
+      setConnectorStatuses(saved.connectorStatuses || {});
+      setSearchProvenance(saved.searchProvenance || null);
+      setProviderSummary(saved.providerSummary || null);
+      didMountRef.current = true;
+      window.history.replaceState(null, "", buildDiscoverBrowserUrl(saved.filters));
+      if (saved.scrollY) {
+        window.requestAnimationFrame(() => {
+          window.scrollTo(0, saved.scrollY);
+        });
+      }
+      return;
     }
-    setFilters((current) => ({
-      ...current,
-      query: qParam ?? current.query,
+
+    const parsedFilters: Filters = {
+      ...initialFilters,
+      query: qParam ?? "",
       platform: platformsList.includes(params.get("platform") ?? "")
         ? params.get("platform")!
-        : current.platform,
-      category: params.get("category") ?? current.category,
-      country: params.get("country") ?? current.country,
-      audienceCountry: params.get("audienceCountry") ?? current.audienceCountry,
-      minFollowers: params.get("minFollowers") ?? current.minFollowers,
-      maxFollowers: params.get("maxFollowers") ?? current.maxFollowers,
-      hasContact: params.get("hasContact") === "true" ? true : current.hasContact,
-    }));
+        : initialFilters.platform,
+      category: params.get("category") ?? initialFilters.category,
+      country: params.get("country") ?? "",
+      audienceCountry: params.get("audienceCountry") ?? "",
+      language: params.get("language") ?? initialFilters.language,
+      minFollowers: params.get("minFollowers") ?? "",
+      maxFollowers: params.get("maxFollowers") ?? "",
+      hasContact: params.get("hasContact") === "true",
+    };
+
+    setFilters(parsedFilters);
+    didMountRef.current = true;
+
+    if (qParam) {
+      setSearchInput(qParam);
+      void executeSearch(qParam, parsedFilters);
+    } else {
+      void executeBrowseFeed(parsedFilters);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep sessionStorage synchronized so Back navigation preserves filters, results, and scroll
+  useEffect(() => {
+    if (!didMountRef.current || liveSearchResults === null) return;
+    saveDiscoverSession({
+      searchInput,
+      filters,
+      sort,
+      currentPage,
+      liveSearchResults,
+      isBrowseFeed,
+      connectorStatuses,
+      searchProvenance,
+      providerSummary,
+      scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+    });
+  }, [
+    searchInput,
+    filters,
+    sort,
+    currentPage,
+    liveSearchResults,
+    isBrowseFeed,
+    connectorStatuses,
+    searchProvenance,
+    providerSummary,
+  ]);
 
   // Determine active creators dataset: live search results take precedence; otherwise saved prospects
   const activeDataset: Creator[] = useMemo(() => {
@@ -401,8 +697,13 @@ export default function DiscoverPage() {
                             collectedAt: data.fetchedAt || new Date().toISOString(),
                             windowStart: null,
                             windowEnd: null,
-                            periodLabel: fresh.isLiveStream ? "Live broadcast" : "Recent content",
-                            sampleSize: 10,
+                            periodLabel:
+                              platform === "Twitch" || platform === "Kick"
+                                ? fresh.isLiveStream
+                                  ? "Current live stream"
+                                  : "Channel snapshot"
+                                : "Channel lifetime average (total views ÷ videos)",
+                            sampleSize: null,
                             source: data.source || `${platform} Platform API`,
                             status: "public" as const,
                           },
@@ -436,6 +737,7 @@ export default function DiscoverPage() {
       const qNormalized = q.replace(/^@+/, "");
       const matchesText =
         !q ||
+        liveSearchResults !== null ||
         [creator.name, account.handle, creator.bio, creator.category ?? ""].some((value) => {
           const lower = value.toLowerCase();
           return lower.includes(q) || (Boolean(qNormalized) && lower.includes(qNormalized));
@@ -452,8 +754,10 @@ export default function DiscoverPage() {
       return (
         matchesText &&
         (filters.platform === "All platforms" || account.platform === filters.platform) &&
-        (filters.category === "All categories" || creator.category === filters.category) &&
-        (filters.language === "All languages" || creator.language === filters.language) &&
+        (filters.category === "All categories" ||
+          (creator.category || "").toLowerCase() === filters.category.toLowerCase()) &&
+        (filters.language === "All languages" ||
+          (creator.language || "").toLowerCase() === filters.language.toLowerCase()) &&
         (!filters.country ||
           creator.creatorCountry?.toLowerCase().includes(filters.country.toLowerCase())) &&
         rangeMatches(followers, filters.minFollowers, filters.maxFollowers) &&
@@ -475,14 +779,26 @@ export default function DiscoverPage() {
       if (sort === "name") return a.creator.name.localeCompare(b.creator.name);
       return 0;
     });
-  }, [activeDataset, filters, sort]);
+  }, [activeDataset, filters, sort, liveSearchResults]);
 
   const uniqueCreatorCount = useMemo(
     () => new Set(results.map((r) => r.creator.id)).size,
     [results],
   );
 
+  const displayedCountByPlatform = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const { account } of results) {
+      counts[account.platform] = (counts[account.platform] ?? 0) + 1;
+    }
+    return counts;
+  }, [results]);
+
   useEffect(() => {
+    if (skipNextPageResetRef.current) {
+      skipNextPageResetRef.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [filters, sort]);
 
@@ -498,8 +814,10 @@ export default function DiscoverPage() {
       label: `Search: ${filters.query.trim()}`,
       clear: () => {
         setSearchInput("");
-        update("query", "");
-        setLiveSearchResults(null);
+        const nextFilters = { ...filters, query: "" };
+        setFilters(nextFilters);
+        window.history.replaceState(null, "", buildDiscoverBrowserUrl(nextFilters));
+        void executeBrowseFeed(nextFilters);
       },
     });
   if (filters.platform !== initialFilters.platform)
@@ -511,6 +829,11 @@ export default function DiscoverPage() {
     appliedFilters.push({
       label: filters.category,
       clear: () => update("category", initialFilters.category),
+    });
+  if (filters.language !== initialFilters.language)
+    appliedFilters.push({
+      label: `Language: ${filters.language}`,
+      clear: () => update("language", initialFilters.language),
     });
   if (filters.country)
     appliedFilters.push({ label: `Country: ${filters.country}`, clear: () => update("country", "") });
@@ -539,6 +862,28 @@ export default function DiscoverPage() {
       label: "Public Email Available",
       clear: () => update("hasContact", false),
     });
+
+  function openCreatorProfile(creator: Creator, account: PlatformAccount) {
+    if (liveSearchResults !== null) {
+      saveDiscoverSession({
+        searchInput,
+        filters,
+        sort,
+        currentPage,
+        liveSearchResults,
+        isBrowseFeed,
+        connectorStatuses,
+        searchProvenance,
+        providerSummary,
+        scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+      });
+    }
+    router.push(
+      `/creators/${creator.id}?platform=${encodeURIComponent(
+        account.platform,
+      )}&handle=${encodeURIComponent(account.handle)}`,
+    );
+  }
 
   function toggleSaveCreator(creatorId: string) {
     if (!hydrated) return;
@@ -575,7 +920,7 @@ export default function DiscoverPage() {
       "Recent Activity",
       "Public Business Email",
       "Contact Source URL",
-      "Data Verification Source",
+      "Data Source",
       "Fetched Timestamp",
     ];
 
@@ -585,7 +930,7 @@ export default function DiscoverPage() {
       account.handle,
       account.profileUrl,
       creator.category ?? "General",
-      creator.language ?? "English",
+      creator.language ?? "Unknown",
       creator.creatorCountry ?? "Global",
       currentFollowers(account),
       account.platform === "YouTube" ? "subscribers" : "followers",
@@ -595,7 +940,7 @@ export default function DiscoverPage() {
       creator.businessContact?.email ?? "",
       creator.businessContact?.sourceUrl ?? "",
       account.snapshots[0]?.source || "Live Platform API",
-      account.snapshots[0]?.collectedAt || new Date().toISOString(),
+      account.snapshots[0]?.collectedAt || "",
     ]);
 
     const csv = [headers, ...lines].map((row) => row.map(csvCell).join(",")).join("\r\n");
@@ -641,7 +986,7 @@ export default function DiscoverPage() {
         detectCreatorCountry(pCreator.handle, pCreator.name || pCreator.displayName, pCreator.bio) ||
         null;
 
-      const detectedLanguage = pCreator.language || "English";
+      const detectedLanguage = pCreator.language ?? null;
       const parsedFollowers =
         pCreator.followers !== null && pCreator.followers !== undefined
           ? Number(pCreator.followers)
@@ -699,8 +1044,13 @@ export default function DiscoverPage() {
                       collectedAt: data.fetchedAt || new Date().toISOString(),
                       windowStart: null,
                       windowEnd: null,
-                      periodLabel: pCreator.isLiveStream ? "Current live broadcast" : "Recent content",
-                      sampleSize: 10,
+                      periodLabel:
+                        importPlatform === "Twitch" || importPlatform === "Kick"
+                          ? pCreator.isLiveStream
+                            ? "Current live stream"
+                            : "Channel snapshot"
+                          : "Channel lifetime average (total views ÷ videos)",
+                      sampleSize: null,
                       source: data.source || `${importPlatform} Platform API`,
                       status: "public" as const,
                     },
@@ -730,9 +1080,9 @@ export default function DiscoverPage() {
       id: importResult.id || `creator-${Date.now()}`,
       name: importResult.name || "New Creator",
       category: importResult.category || "General",
-      language: importResult.language || "English",
+      language: importResult.language ?? null,
       creatorCountry: finalCountry,
-      creatorCountrySource: "Platform API / Verified Channel Data",
+      creatorCountrySource: "Platform API / Channel Data",
       bio: importResult.bio || "",
       avatar: importResult.avatar || "",
       accounts: importResult.accounts || [],
@@ -770,7 +1120,9 @@ export default function DiscoverPage() {
           </div>
           <h1>Find creators across live platforms.</h1>
           <p className="page-subtitle">
-            Discover YouTube &amp; Twitch creators, look up Kick channels by @handle, and view live reach with verified timestamps.
+            {activePlatforms.Twitch
+              ? "Search YouTube & Twitch creators by keyword, look up Kick channels by @handle, and inspect API-fetched metrics with retrieval timestamps."
+              : "Search YouTube creators by keyword or filter, look up Kick channels by @handle, and inspect API-fetched metrics with retrieval timestamps."}
           </p>
         </div>
         <div className="page-heading-actions">
@@ -841,8 +1193,10 @@ export default function DiscoverPage() {
               className="clear-search"
               onClick={() => {
                 setSearchInput("");
-                update("query", "");
-                setLiveSearchResults(null);
+                const cleared = { ...filters, query: "" };
+                setFilters(cleared);
+                window.history.replaceState(null, "", buildDiscoverBrowserUrl(cleared));
+                void executeBrowseFeed(cleared);
               }}
               aria-label="Clear search"
               type="button"
@@ -955,13 +1309,18 @@ export default function DiscoverPage() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
               <strong style={{ color: "#166534" }}>{searchProvenance.source}</strong>
-              <span style={{ color: "#4b6c51" }}>· Live platform lookup</span>
+              <span style={{ color: "#4b6c51" }}>
+                · {isBrowseFeed ? "Cached real API browse feed (0 quota)" : "Live platform lookup"}
+                {searchProvenance.retrievedAt
+                  ? ` · Retrieved ${formatCollectedTimestamp(searchProvenance.retrievedAt)}`
+                  : ""}
+              </span>
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color: providerSummary?.chargeSearch ? "#15803d" : "#68836c" }}>
-              {providerSummary?.chargeSearch ? "✓ 1 Search Quota Used" : "✓ Search Quota NOT Charged"}
+              {providerSummary?.chargeSearch ? "✓ 1 Search Quota Used" : "✓ 0 Search Quota Charged"}
             </div>
           </div>
 
@@ -980,10 +1339,15 @@ export default function DiscoverPage() {
               let text = `${plat}: ${stat.status}`;
 
               if (isSuccess) {
-                const resultCount = stat.itemCount ?? stat.count ?? 0;
+                const shownCount = displayedCountByPlatform[plat] ?? 0;
+                const serverCount = stat.itemCount ?? stat.count ?? 0;
+                const resultCount = liveSearchResults !== null ? shownCount : serverCount;
                 bg = "rgba(34, 197, 94, 0.16)";
                 color = "#15803d";
-                text = `✓ ${plat}: ${resultCount} ${resultCount === 1 ? "result" : "results"}`;
+                text =
+                  liveSearchResults !== null && serverCount > shownCount
+                    ? `✓ ${plat}: ${shownCount} shown (${serverCount} fetched)`
+                    : `✓ ${plat}: ${resultCount} ${resultCount === 1 ? "result" : "results"}`;
               } else if (isUnconfigured) {
                 bg = "rgba(234, 179, 8, 0.14)";
                 color = "#854d0e";
@@ -1049,11 +1413,7 @@ export default function DiscoverPage() {
           ))}
           <button
             className="clear-all-filters"
-            onClick={() => {
-              setFilters(initialFilters);
-              setLiveSearchResults(null);
-              setSearchProvenance(null);
-            }}
+            onClick={resetAllFiltersAndBrowse}
             type="button"
           >
             Reset all
@@ -1069,7 +1429,7 @@ export default function DiscoverPage() {
               <SlidersHorizontal size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
               Filters
             </strong>
-            <button onClick={() => setFilters(initialFilters)} type="button">
+            <button onClick={resetAllFiltersAndBrowse} type="button">
               Clear all
             </button>
           </div>
@@ -1088,7 +1448,7 @@ export default function DiscoverPage() {
                 ))}
               </select>
               <span className="filter-hint">
-                Filters loaded live results or saved creators; dynamically adds platform categories.
+                Live-queries matching channels on selection (or filters active search results).
               </span>
             </FilterGroup>
 
@@ -1129,6 +1489,28 @@ export default function DiscoverPage() {
                   onChange={(e) => update("maxFollowers", e.target.value)}
                   placeholder="Max"
                 />
+              </div>
+              <div className="slider-presets" style={{ marginTop: 6 }}>
+                {[
+                  { label: "All", min: "", max: "" },
+                  { label: "≤ 50K", min: "", max: "50000" },
+                  { label: "≤ 100K", min: "", max: "100000" },
+                  { label: "≤ 500K", min: "", max: "500000" },
+                  { label: "1M+", min: "1000000", max: "" },
+                ].map((preset) => {
+                  const isActive =
+                    filters.minFollowers === preset.min && filters.maxFollowers === preset.max;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className={`slider-preset-pill ${isActive ? "active" : ""}`}
+                      onClick={() => applyFollowerPreset(preset.min, preset.max)}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
             </FilterGroup>
 
@@ -1243,7 +1625,7 @@ export default function DiscoverPage() {
                 ))}
               </select>
               <span className="filter-hint">
-                Applies to loaded live results or saved workspace profiles.
+                Live-queries matching channels (including Hindi) or filters current search results.
               </span>
             </FilterGroup>
 
@@ -1264,9 +1646,33 @@ export default function DiscoverPage() {
                   checked={filters.hasContact}
                   onChange={(e) => update("hasContact", e.target.checked)}
                 />
-                Direct verified email only
+                Public business email only
               </label>
             </FilterGroup>
+
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                type="button"
+                className="button button-primary button-sm"
+                style={{ width: "100%", justifyContent: "center" }}
+                disabled={isSearching || (Boolean(filters.query.trim()) && isQuotaExhausted)}
+                onClick={() => {
+                  if (filters.query.trim()) {
+                    void executeSearch(filters.query.trim(), filters);
+                  } else {
+                    void executeBrowseFeed(filters);
+                  }
+                }}
+              >
+                <RefreshCw size={12} className={isSearching ? "spin-icon" : ""} />
+                <span>{filters.query.trim() ? "Re-query Live APIs" : "Apply Filters Live"}</span>
+              </button>
+              <span className="filter-hint" style={{ margin: 0 }}>
+                {filters.query.trim()
+                  ? "Re-runs keyword query on platform APIs with active filters."
+                  : "Queries real platform APIs for your active filters (0 search quota)."}
+              </span>
+            </div>
           </div>
         </aside>
 
@@ -1277,7 +1683,7 @@ export default function DiscoverPage() {
               <strong>{uniqueCreatorCount}</strong> unique {uniqueCreatorCount === 1 ? "creator" : "creators"} · <strong>{results.length}</strong> platform {results.length === 1 ? "account" : "accounts"}
               {liveSearchResults !== null && (
                 <span style={{ marginLeft: 6, color: "#166534", fontWeight: 600 }}>
-                  (Live Search Results)
+                  {isBrowseFeed ? "(Live API Browse)" : "(Live Search Results)"}
                 </span>
               )}
               {liveSearchResults === null && savedCreators.length > 0 && (
@@ -1333,10 +1739,10 @@ export default function DiscoverPage() {
               <div style={{ textAlign: "center", padding: "64px 20px" }}>
                 <RefreshCw size={28} className="spin-icon" style={{ color: "#22c55e", margin: "0 auto 16px" }} />
                 <h3 style={{ fontSize: 16, color: "#1d472b", marginBottom: 6 }}>
-                  Searching active platforms…
+                  {filters.query.trim() ? "Searching active platforms…" : "Loading live creator profiles…"}
                 </h3>
                 <p style={{ color: "#547359", fontSize: 13, margin: 0 }}>
-                  Checking live discovery connectors and deduplicating matching creator profiles.
+                  Querying official platform APIs and reconciling deduplicated creator metrics.
                 </p>
               </div>
             ) : results.length ? (
@@ -1344,7 +1750,7 @@ export default function DiscoverPage() {
                 {/* Desktop Results Table (>= 769px) */}
                 <div className="discovery-table-wrap">
                   <div className="table-scroll-cue">
-                    <span>← Swipe horizontally to view all columns & verification details →</span>
+                    <span>← Swipe horizontally to view all columns & API source details →</span>
                   </div>
                   <div className="table-wrap">
                     <table className="data-table discovery-table">
@@ -1356,7 +1762,7 @@ export default function DiscoverPage() {
                           <th>Country</th>
                           <th>Followers / Subs</th>
                           <th>Reach Metric</th>
-                          <th>Verification & Source</th>
+                          <th>Source & Retrieved</th>
                           <th>Business Email</th>
                           <th aria-label="Save creator">Save</th>
                         </tr>
@@ -1376,18 +1782,14 @@ export default function DiscoverPage() {
                               : "Reach unavailable";
 
                           const isRefreshing = refreshingCreatorId === creator.id;
+                          const collectedAt =
+                            reachSnapshot?.collectedAt || account.snapshots[0]?.collectedAt || null;
 
                           return (
                             <tr
                               key={`${creator.id}:${account.id}`}
                               className="clickable-row"
-                              onClick={() =>
-                                router.push(
-                                  `/creators/${creator.id}?platform=${encodeURIComponent(
-                                    account.platform,
-                                  )}&handle=${encodeURIComponent(account.handle)}`,
-                                )
-                              }
+                              onClick={() => openCreatorProfile(creator, account)}
                               style={{ cursor: "pointer" }}
                             >
                               <td>
@@ -1450,7 +1852,10 @@ export default function DiscoverPage() {
                                   <>
                                     <strong>{formatNumber(reach)}</strong>
                                     <span className="creator-handle">
-                                      {reachLabel} · {liveSearchResults !== null ? (reachSnapshot?.periodLabel ?? "live") : `Saved (${new Date(reachSnapshot?.collectedAt || Date.now()).toLocaleDateString()})`}
+                                      {reachLabel} ·{" "}
+                                      {liveSearchResults !== null
+                                        ? (reachSnapshot?.periodLabel ?? "API snapshot")
+                                        : `Saved (${formatCollectedTimestamp(reachSnapshot?.collectedAt)})`}
                                     </span>
                                   </>
                                 )}
@@ -1459,12 +1864,12 @@ export default function DiscoverPage() {
                                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                                   <span style={{ fontSize: 10, color: liveSearchResults !== null ? "#166534" : "#475569", fontWeight: 600 }}>
                                     {liveSearchResults !== null
-                                      ? (account.snapshots[0]?.source || `${account.platform} API`)
+                                      ? `API-Fetched · ${account.snapshots[0]?.source || `${account.platform} API`}`
                                       : "Saved Workspace Database"}
                                   </span>
-                                  {liveSearchResults === null && account.snapshots[0]?.collectedAt && (
+                                  {collectedAt && (
                                     <small style={{ fontSize: 9, color: "var(--muted, #64748b)" }}>
-                                      Collected: {new Date(account.snapshots[0].collectedAt).toLocaleDateString()}
+                                      Retrieved: {formatCollectedTimestamp(collectedAt)}
                                     </small>
                                   )}
                                   <button
@@ -1500,7 +1905,7 @@ export default function DiscoverPage() {
                                     <a
                                       href={`mailto:${creator.businessContact.email}`}
                                       onClick={(e) => e.stopPropagation()}
-                                      title={`Verified contact source: ${creator.businessContact.sourceUrl || "Public channel listing"}`}
+                                      title={`Public listing source: ${creator.businessContact.sourceUrl || "Public channel listing"}`}
                                       className="contact-badge"
                                     >
                                       {creator.businessContact.email}
@@ -1568,13 +1973,7 @@ export default function DiscoverPage() {
                         <div className="mobile-card-header">
                           <div
                             className="creator-cell"
-                            onClick={() =>
-                              router.push(
-                                `/creators/${creator.id}?platform=${encodeURIComponent(
-                                  account.platform,
-                                )}&handle=${encodeURIComponent(account.handle)}`,
-                              )
-                            }
+                            onClick={() => openCreatorProfile(creator, account)}
                             style={{ cursor: "pointer" }}
                           >
                             <span className="creator-avatar">
@@ -1678,8 +2077,8 @@ export default function DiscoverPage() {
                             <span className="provenance-label">Data Source:</span>
                             <span className="provenance-val">
                               {liveSearchResults !== null
-                                ? (reachSnapshot?.source || (account.snapshots[0]?.source ? account.snapshots[0].source : `${account.platform} Official API`))
-                                : `Saved Workspace Database (Collected: ${new Date(account.snapshots[0]?.collectedAt || Date.now()).toLocaleDateString()})`}
+                                ? `API-Fetched · ${reachSnapshot?.source || account.snapshots[0]?.source || `${account.platform} Official API`} (Retrieved: ${formatCollectedTimestamp(reachSnapshot?.collectedAt || account.snapshots[0]?.collectedAt)})`
+                                : `Saved Workspace Database (Retrieved: ${formatCollectedTimestamp(account.snapshots[0]?.collectedAt)})`}
                             </span>
                           </div>
                           <div className="provenance-row">
@@ -1704,7 +2103,7 @@ export default function DiscoverPage() {
                         <div className="mobile-card-actions">
                           <button
                             className="button button-secondary button-sm"
-                            onClick={() => router.push(`/creators/${creator.id}`)}
+                            onClick={() => openCreatorProfile(creator, account)}
                             type="button"
                           >
                             View Profile
@@ -1776,16 +2175,20 @@ export default function DiscoverPage() {
                       : "Monthly Search Quota Reached"
                     : filters.query
                       ? `No creators found for "${filters.query}"`
-                      : "Discover Creators Across Live Platforms"}
+                      : appliedFilters.length > 0
+                        ? "No creators match your current filters"
+                        : "Discover Creators Across Live Platforms"}
                 </strong>
                 <p style={{ maxWidth: 480, margin: "8px auto 20px" }}>
                   {isQuotaExhausted && filters.query
                     ? isGuest
                       ? `You have used all 5 preview searches before querying "${filters.query}". Sign in free to unlock 50 monthly creator searches.`
                       : `Your monthly search quota is exhausted (0 remaining), so "${filters.query}" could not run live. Upgrade your plan to continue.`
-                    : filters.query
+                    : filters.query || appliedFilters.length > 0
                       ? getEmptyFilterGuidance(filters, providerSummary)
-                      : "Search YouTube & Twitch by keyword when active, look up Kick creators by exact @handle, or use Direct Handle Lookup below."}
+                      : activePlatforms.Twitch
+                        ? "Search YouTube & Twitch by keyword, look up Kick creators by exact @handle, or select a category, language, or follower size filter to browse live creator profiles."
+                        : "Search YouTube by keyword, look up Kick creators by exact @handle, or select a category, language, or follower size filter to browse live creator profiles."}
                 </p>
 
                 {isQuotaExhausted && filters.query && (
@@ -1835,7 +2238,23 @@ export default function DiscoverPage() {
                   ))}
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  {appliedFilters.length > 0 && !(isQuotaExhausted && filters.query) && (
+                    <button
+                      className="button button-primary button-sm"
+                      onClick={() => {
+                        if (filters.query.trim()) {
+                          void executeSearch(filters.query.trim(), filters);
+                        } else {
+                          void executeBrowseFeed(filters);
+                        }
+                      }}
+                      type="button"
+                    >
+                      <RefreshCw size={13} />{" "}
+                      {filters.query.trim() ? "Re-query Live APIs" : "Query Live APIs with Active Filters"}
+                    </button>
+                  )}
                   <button
                     className="button button-primary button-sm"
                     onClick={() => setImportModalOpen(true)}
@@ -1843,17 +2262,13 @@ export default function DiscoverPage() {
                   >
                     <UserPlus size={13} /> Direct Handle Lookup
                   </button>
-                  {filters.query && (
+                  {(filters.query || appliedFilters.length > 0) && (
                     <button
                       className="button button-secondary button-sm"
-                      onClick={() => {
-                        setFilters(initialFilters);
-                        setSearchInput("");
-                        setLiveSearchResults(null);
-                      }}
+                      onClick={resetAllFiltersAndBrowse}
                       type="button"
                     >
-                      Clear Search Filters
+                      Reset Filters
                     </button>
                   )}
                 </div>
@@ -2051,12 +2466,12 @@ export default function DiscoverPage() {
                     <div className="preview-info">
                       <strong>{importResult.name}</strong>
                       <small>
-                        {importResult.accounts?.[0]?.handle} · {importResult.category} ·{" "}
-                        {importResult.creatorCountry}
+                        {importResult.accounts?.[0]?.handle} · {importResult.category}
+                        {importResult.creatorCountry ? ` · ${importResult.creatorCountry}` : ""}
                       </small>
                     </div>
                     <span className="status-label status-connected">
-                      <Check size={12} /> Live Verified
+                      <Check size={12} /> API-Fetched
                     </span>
                   </div>
 
@@ -2070,14 +2485,36 @@ export default function DiscoverPage() {
                         )}
                       </strong>
                     </div>
-                    {importResult.accounts?.[0]?.snapshots?.[1]?.value && (
+                    {typeof importResult.accounts?.[0]?.snapshots?.[1]?.value === "number" && (
                       <div>
-                        <span>Average Reach</span>
+                        <span>
+                          {importResult.accounts[0].snapshots[1].metricName === "avg_live_viewers"
+                            ? "Avg. Live Viewers"
+                            : "Avg. Video Views"}
+                        </span>
                         <strong>
-                          {formatNumber(importResult.accounts[0].snapshots[1].value)}
+                          {formatNumber(importResult.accounts[0].snapshots[1].value as number)}
                         </strong>
                       </div>
                     )}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--muted)",
+                      marginBottom: 10,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 6,
+                    }}
+                  >
+                    <span>
+                      Source: {importResult.accounts?.[0]?.snapshots?.[0]?.source || `${importPlatform} Official API`}
+                    </span>
+                    <span>
+                      Retrieved: {formatCollectedTimestamp(importResult.accounts?.[0]?.snapshots?.[0]?.collectedAt)}
+                    </span>
                   </div>
                   <button
                     className="button button-primary button-full"

@@ -90,8 +90,10 @@ export async function refreshSavedCreatorsFromConnectors(savedCreators: Creator[
           collectedAt: freshItem.fetchedAt || nowStr,
           windowStart: null,
           windowEnd: null,
-          periodLabel: freshItem.isLiveStream ? "Current Live Stream" : "Recent Content",
-          sampleSize: 10,
+          periodLabel: freshItem.isLiveStream
+            ? "Current Live Stream"
+            : "Channel lifetime average (total views ÷ videos)",
+          sampleSize: null,
           source: freshItem.source,
           status: "public",
         });

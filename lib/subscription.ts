@@ -25,8 +25,8 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     searchQuota: 50,
     description: "Create a free account to unlock 50 monthly creator searches and private shortlists.",
     features: [
-      "50 verified creator searches per account / month",
-      "Real-time search across connected platforms",
+      "50 live creator searches per account / month",
+      "Real-time search across active platforms",
       "Private saved creators & shortlist folders",
       "Multi-platform analytics profiles",
       "CSV export & campaign notes CRM",
@@ -41,7 +41,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     searchQuota: 150,
     description: "Ideal for growing marketing teams and scout agencies.",
     features: [
-      "150 verified creator searches / month",
+      "150 live creator searches / month",
       "Public business contact emails (when available)",
       "Unlimited shortlist folders & tagging",
       "CSV export & campaign notes CRM",
@@ -59,7 +59,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     popular: true,
     description: "For active talent managers & high-volume brand campaigns.",
     features: [
-      "300 verified creator searches / month",
+      "300 live creator searches / month",
       "Public contact emails with outreach tools",
       "Concurrent live viewer & video analytics",
       "Live metric refresh across saved creators",

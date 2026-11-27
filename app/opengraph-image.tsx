@@ -53,19 +53,19 @@ export default function OpenGraphImage() {
               color: "#122f1d",
             }}
           >
-            Discover & Partner with Verified Creators in Real-Time.
+            Discover Real-Time Creators &amp; Campaign Intelligence.
           </div>
           <div style={{ fontSize: "26px", lineHeight: 1.4, color: "#3d664c" }}>
-            Search YouTube & Twitch live, look up Kick handles, and manage creator-authorized partnerships in one campaign CRM.
+            Search live YouTube channels, look up Kick @handles, and manage creator partnerships with transparent source timestamps.
           </div>
         </div>
 
         <div style={{ display: "flex", gap: "16px", fontSize: "20px", fontWeight: 600, color: "#215a38" }}>
           <span>YouTube Live Search</span>
           <span>•</span>
-          <span>Twitch Live Search</span>
-          <span>•</span>
           <span>Kick Handle Lookup</span>
+          <span>•</span>
+          <span>Source Timestamps</span>
           <span>•</span>
           <span>Creator CRM</span>
         </div>

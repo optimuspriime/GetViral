@@ -12,20 +12,20 @@ export const metadata: Metadata = {
     template: "%s | GetViral",
   },
   description:
-    "Search YouTube and Twitch creators live, look up Kick channel handles, and manage campaign partnerships with verified metrics and provenance.",
+    "Search live YouTube channels, look up Kick channel handles, and manage campaign partnerships with transparent API metrics and timestamps.",
   openGraph: {
     type: "website",
     siteName: "GetViral",
     title: "GetViral — Creator Discovery & Campaign CRM",
     description:
-      "Search YouTube and Twitch live, look up Kick channel handles, and organize creator partnerships in one workspace.",
+      "Search live YouTube channels, look up Kick handles, and organize creator partnerships in one workspace.",
     url: siteUrl,
   },
   twitter: {
     card: "summary_large_image",
     title: "GetViral — Creator Discovery & Campaign CRM",
     description:
-      "Search YouTube and Twitch live, look up Kick channel handles, and organize creator partnerships.",
+      "Search live YouTube channels, look up Kick handles, and organize creator partnerships.",
   },
 };
 

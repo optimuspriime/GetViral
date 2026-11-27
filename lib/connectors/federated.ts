@@ -17,6 +17,9 @@ export async function federatedSearch(
     platform?: Platform | "All platforms";
     bypassCache?: boolean;
     limit?: number;
+    regionCode?: string | null;
+    relevanceLanguage?: string | null;
+    maxFollowers?: number | null;
   },
 ): Promise<FederatedSearchResponse> {
   const q = query.trim();
@@ -125,14 +128,29 @@ export async function federatedSearch(
   // Deduplicate creators by (platform + handle)
   const seen = new Set<string>();
   const deduplicated: NormalizedCreator[] = [];
+  const dedupedCounts: Partial<Record<Platform, number>> = {};
 
   for (const item of allItems) {
     const key = `${item.platform.toLowerCase()}:${item.handle.toLowerCase().replace(/^@/, "")}`;
     if (!seen.has(key)) {
       seen.add(key);
       deduplicated.push(item);
+      dedupedCounts[item.platform] = (dedupedCounts[item.platform] ?? 0) + 1;
     }
   }
+
+  // Reconcile each platform status itemCount to match unique deduplicated results returned
+  (Object.keys(connectorStatuses) as Platform[]).forEach((plat) => {
+    const stat = connectorStatuses[plat];
+    if (stat.status === "success") {
+      const rawCount = stat.itemCount;
+      const finalCount = dedupedCounts[plat] ?? 0;
+      stat.itemCount = finalCount;
+      if (rawCount > finalCount) {
+        stat.message = `${finalCount} unique results (${rawCount - finalCount} duplicate entries merged)`;
+      }
+    }
+  });
 
   // Sort: higher follower/reach first
   deduplicated.sort((a, b) => {

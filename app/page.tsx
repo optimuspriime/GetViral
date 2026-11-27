@@ -134,9 +134,11 @@ export default function DashboardPage() {
           <div className="eyebrow">
             <Sparkles size={12} className="inline-icon" /> LIVE CREATOR DISCOVERY · {activeWorkspace.name.toUpperCase()}
           </div>
-          <h1>Find verified creators and manage campaign partnerships.</h1>
+          <h1>Discover real-time creators and manage campaign partnerships.</h1>
           <p className="page-subtitle">
-            Search YouTube &amp; Twitch live, look up Kick handles, and connect creator-authorized TikTok &amp; Instagram accounts — with transparent source timestamps and CRM lists.
+            {connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
+              ? "Search live YouTube & Twitch channels, look up Kick handles, and connect creator-authorized TikTok & Instagram accounts — with transparent source timestamps."
+              : "Search live YouTube channels by topic or filter, look up Kick creators by exact @handle, and manage CRM shortlists. (Twitch pending activation; TikTok & Instagram require creator OAuth.)"}
           </p>
 
           {/* Primary Search CTA */}
@@ -151,7 +153,9 @@ export default function DashboardPage() {
                     ? isGuest
                       ? "Guest preview limit reached (0/5) — sign in for 50 monthly searches"
                       : "Monthly quota reached (0 remaining) — view plans"
-                    : "Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
+                    : connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
+                      ? "Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
+                      : "Search live creators on YouTube by topic or look up Kick @handles..."
                 }
                 value={quickSearchInput}
                 disabled={isQuotaExhausted}
@@ -219,7 +223,11 @@ export default function DashboardPage() {
                 </button>
               ))}
 
-              <span style={{ color: "var(--muted, #68836c)", marginLeft: 4 }}>Keyword (YT / Twitch):</span>
+              <span style={{ color: "var(--muted, #68836c)", marginLeft: 4 }}>
+                {connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
+                  ? "Keyword (YouTube / Twitch):"
+                  : "Topic / Channel (YouTube):"}
+              </span>
               {["Gaming streamers", "Tech reviews", "Kai Cenat"].map((term) => (
                 <button
                   key={term}
@@ -288,11 +296,17 @@ export default function DashboardPage() {
           <StatCard
             tone="coral"
             label="Live Platforms"
-            value={connectorsLoaded ? activeConnectors.length : 1}
+            value={
+              connectorsLoaded ? (
+                activeConnectors.length
+              ) : (
+                <span className="skeleton-pill" style={{ width: 42, height: 24, verticalAlign: "middle" }} />
+              )
+            }
             note={
               connectorsLoaded
                 ? `of ${integrationsHealth.length} active (${activeConnectors.map((i) => i.platform).join(", ") || "None"})`
-                : "Checking live platform availability"
+                : "Checking platform status…"
             }
             icon={<Globe size={16} />}
           />
@@ -677,7 +691,7 @@ function StatCard({
   tone,
 }: {
   label: string;
-  value: number;
+  value: React.ReactNode;
   note: string;
   icon: React.ReactNode;
   tone: "violet" | "teal" | "coral" | "yellow";
@@ -689,7 +703,11 @@ function StatCard({
         <span className="stat-icon">{icon}</span>
       </div>
       <div className="stat-value" suppressHydrationWarning>
-        {value >= 999999 ? "Unlimited" : new Intl.NumberFormat("en-US").format(value)}
+        {typeof value === "number"
+          ? value >= 999999
+            ? "Unlimited"
+            : new Intl.NumberFormat("en-US").format(value)
+          : value}
       </div>
       <div className="stat-foot" suppressHydrationWarning>{note}</div>
     </section>

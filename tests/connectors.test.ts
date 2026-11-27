@@ -7,6 +7,7 @@ import { lookupKick } from "../lib/connectors/kick";
 import { searchTikTok } from "../lib/connectors/tiktok";
 import { searchInstagram } from "../lib/connectors/instagram";
 import { federatedSearch } from "../lib/connectors/federated";
+import { getLiveBrowseCreators } from "../lib/connectors/browse";
 import { searchCache } from "../lib/connectors/cache";
 import type { NormalizedCreator, ConnectorResponse } from "../lib/connectors/types";
 import { TEST_FIXTURE_CREATORS } from "./fixtures/sample-creators";
@@ -288,6 +289,66 @@ test("Federated Connectors Test Suite", async (t) => {
     const res = await federatedSearch("Gaming streamers", { bypassCache: true });
     assert.equal(res.connectorStatuses.Kick.status, "unsupported_operation");
     assert.match(res.connectorStatuses.Kick.message || "", /handle/i);
+  });
+
+  await t.test("12. Federated Search reconciles connector itemCount with unique post-dedupe count", async () => {
+    const dupeA: NormalizedCreator = {
+      id: "dedupe-yt-1",
+      platform: "YouTube",
+      handle: "@DedupeChannel",
+      name: "Dedupe Channel",
+      profileUrl: "https://youtube.com/@DedupeChannel",
+      avatarUrl: null,
+      bio: "First copy",
+      country: "United States",
+      category: "Gaming",
+      language: "English",
+      followers: 50000,
+      reach: 12000,
+      reachMetric: "avg_views",
+      businessContact: null,
+      source: "YouTube Data API v3",
+      fetchedAt: new Date().toISOString(),
+      freshness: "Live",
+      isLive: true,
+    };
+
+    const dupedResp: ConnectorResponse = {
+      platform: "YouTube",
+      status: "success",
+      items: [dupeA, { ...dupeA, id: "dedupe-yt-2" }],
+      capabilities: {
+        platform: "YouTube",
+        keywordDiscovery: true,
+        exactHandleLookup: true,
+        categoryDiscovery: false,
+        liveStreamStatus: true,
+        requiresOAuth: false,
+        requiresApiKey: true,
+        authType: "api_key",
+        supportedMetrics: ["subscribers", "avg_views"],
+        discoveryNote: "YouTube official API",
+        authorizationRequirement: "API key",
+      },
+      fetchedAt: new Date().toISOString(),
+      source: "YouTube Data API v3",
+      isLive: true,
+    };
+
+    searchCache.set("youtube", "search", "dedupe_reconcile_query", dupedResp, 10000);
+    const federated = await federatedSearch("dedupe_reconcile_query", { platform: "YouTube" });
+    assert.equal(federated.creators.length, 1);
+    assert.equal(federated.connectorStatuses.YouTube.itemCount, 1);
+  });
+
+  await t.test("13. Live Browse never fabricates YouTube or Twitch creators when keys are unconfigured", async () => {
+    delete process.env.YOUTUBE_DATA_API_KEY;
+    delete process.env.TWITCH_CLIENT_ID;
+    delete process.env.TWITCH_CLIENT_SECRET;
+
+    const browse = await getLiveBrowseCreators({ platform: "YouTube", category: "Gaming" });
+    assert.equal(browse.creators.length, 0);
+    assert.equal(browse.connectorStatuses.YouTube.status, "unconfigured");
   });
 
   // Restore env vars
