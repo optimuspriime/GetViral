@@ -70,15 +70,16 @@ export async function POST(request: Request) {
       },
       message:
         stats.totalSynced > 0
-          ? `Refreshed ${stats.totalSynced} saved platform account(s) from live APIs.`
-          : `Checked ${userCreators.length} saved creator(s). Configure unconfigured provider keys in Settings to refresh YouTube/Twitch accounts.`,
+          ? `Refreshed ${stats.totalSynced} saved platform channel(s).`
+          : `Checked ${userCreators.length} saved creator(s). Connect active platform integrations to refresh channels.`,
     });
   } catch (error) {
+    console.error("[sync] unexpected error:", error);
     return NextResponse.json(
       {
         success: false,
         syncedAt: syncTimestamp,
-        error: error instanceof Error ? error.message : "Sync error",
+        error: "Unable to complete sync right now.",
       },
       { status: 500 },
     );

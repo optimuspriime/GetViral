@@ -5,6 +5,8 @@ import { searchTwitch } from "@/lib/connectors/twitch";
 import { lookupKick } from "@/lib/connectors/kick";
 import { searchTikTok } from "@/lib/connectors/tiktok";
 import { searchInstagram } from "@/lib/connectors/instagram";
+import { sanitizePublicSourceLabel } from "@/lib/public-labels";
+import { sanitizePublicErrorMessage } from "@/lib/server-sanitize";
 import { attachGuestCookie, resolveServerSession } from "@/lib/auth/server-session";
 import {
   attachQuotaCookie,
@@ -41,7 +43,7 @@ export async function GET(request: Request) {
     return res;
   }
 
-  const cleanHandle = handle.trim();
+  const cleanHandle = handle.trim().slice(0, 80);
   const now = new Date().toISOString();
 
   try {
@@ -60,83 +62,110 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Platform ${platform} is not supported.` }, { status: 400 });
     }
 
+    const sanitizedCapabilities = {
+      platform: result.capabilities.platform,
+      keywordDiscovery: result.capabilities.keywordDiscovery,
+      exactHandleLookup: result.capabilities.exactHandleLookup,
+      requiresOAuth: result.capabilities.requiresOAuth,
+    };
+
     if (result.status === "unconfigured") {
-      const publicError = session.isAdmin
-        ? result.message || `${platform} connector is not configured with required API credentials.`
-        : `${platform} channel lookup is temporarily pending activation.`;
-      const publicCapabilities = session.isAdmin
-        ? result.capabilities
-        : {
-            ...result.capabilities,
-            authorizationRequirement: result.capabilities.requiresApiKey
-              ? `Managed server integration for ${platform}.`
-              : result.capabilities.authorizationRequirement,
-          };
-      const res = NextResponse.json({
-        success: false,
-        platform,
-        status: "unconfigured",
-        chargeSearch: false,
-        subscription: quotaCheck.subscription,
-        error: publicError,
-        capabilities: publicCapabilities,
-      }, { status: 200 });
+      const publicError = `${platform} channel lookup is temporarily pending activation.`;
+      const res = NextResponse.json(
+        {
+          success: false,
+          platform,
+          status: "unconfigured",
+          chargeSearch: false,
+          subscription: quotaCheck.subscription,
+          error: publicError,
+          capabilities: sanitizedCapabilities,
+        },
+        { status: 200 },
+      );
       attachGuestCookie(res, session);
       attachQuotaCookie(res, session, quotaCheck.subscription);
       return res;
     }
 
     if (result.status === "unsupported_operation") {
-      const res = NextResponse.json({
-        success: false,
-        platform,
-        status: "unsupported_operation",
-        chargeSearch: false,
-        subscription: quotaCheck.subscription,
-        error: result.message || `${platform} API does not support this query type.`,
-        capabilities: result.capabilities,
-      }, { status: 200 });
+      const res = NextResponse.json(
+        {
+          success: false,
+          platform,
+          status: "unsupported_operation",
+          chargeSearch: false,
+          subscription: quotaCheck.subscription,
+          error: sanitizePublicErrorMessage(
+            result.message,
+            platform,
+            `${platform} does not support this lookup mode.`,
+          ),
+          capabilities: sanitizedCapabilities,
+        },
+        { status: 200 },
+      );
       attachGuestCookie(res, session);
       attachQuotaCookie(res, session, quotaCheck.subscription);
       return res;
     }
 
     if (result.status === "rate_limited") {
-      return NextResponse.json({
-        success: false,
-        platform,
-        status: "rate_limited",
-        chargeSearch: false,
-        error: result.message || `${platform} API rate limit exceeded.`,
-        capabilities: result.capabilities,
-      }, { status: 429 });
+      return NextResponse.json(
+        {
+          success: false,
+          platform,
+          status: "rate_limited",
+          chargeSearch: false,
+          error: `${platform} search capacity is temporarily busy. Please try again shortly.`,
+          capabilities: sanitizedCapabilities,
+        },
+        { status: 429 },
+      );
     }
 
     if (result.status === "error") {
-      return NextResponse.json({
-        success: false,
-        platform,
-        status: "error",
-        chargeSearch: false,
-        error: result.message || `Failed to lookup channel on ${platform}.`,
-        capabilities: result.capabilities,
-      }, { status: 502 });
+      return NextResponse.json(
+        {
+          success: false,
+          platform,
+          status: "error",
+          chargeSearch: false,
+          error: sanitizePublicErrorMessage(
+            result.message,
+            platform,
+            `Failed to look up channel on ${platform}.`,
+          ),
+          capabilities: sanitizedCapabilities,
+        },
+        { status: 502 },
+      );
     }
 
-    const creator = result.items[0] || null;
+    const rawCreator = result.items[0] || null;
+    const publicSource = sanitizePublicSourceLabel(platform, result.source);
 
-    if (!creator) {
-      return NextResponse.json({
-        success: false,
-        platform,
-        chargeSearch: false,
-        error: `No channel found for handle "${cleanHandle}" on ${platform}.`,
-        source: result.source,
-        fetchedAt: now,
-        dataFreshness: "Live Platform API Response",
-        isLive: true,
-      }, { status: 404 });
+    if (!rawCreator) {
+      return NextResponse.json(
+        {
+          success: false,
+          platform,
+          chargeSearch: false,
+          error: `No channel found for handle "${cleanHandle}" on ${platform}.`,
+          source: publicSource,
+          fetchedAt: now,
+          dataFreshness: "Live Channel Snapshot",
+          isLive: true,
+        },
+        { status: 404 },
+      );
     }
+
+    const creator = {
+      ...rawCreator,
+      source: sanitizePublicSourceLabel(platform, rawCreator.source),
+      freshness: "Live Channel Snapshot",
+    };
 
     // Charge quota ONLY on live discovery lookups that return real data
     const chargeSearch = mode === "charge" || mode === "discover";
@@ -147,9 +176,9 @@ export async function GET(request: Request) {
     const res = NextResponse.json({
       success: true,
       platform,
-      source: result.source,
+      source: publicSource,
       fetchedAt: result.fetchedAt,
-      dataFreshness: creator.freshness,
+      dataFreshness: "Live Channel Snapshot",
       isLive: result.isLive,
       chargeSearch,
       subscription: latestSub,
@@ -159,11 +188,12 @@ export async function GET(request: Request) {
     attachQuotaCookie(res, session, latestSub);
     return res;
   } catch (error) {
+    console.error("[lookup] unexpected error:", error);
     return NextResponse.json(
       {
         success: false,
         platform,
-        error: error instanceof Error ? error.message : "Failed to execute platform lookup.",
+        error: "Failed to complete channel lookup. Please try again.",
       },
       { status: 500 },
     );

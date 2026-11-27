@@ -1,3 +1,4 @@
+import "server-only";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 export const GUEST_COOKIE_NAME = "gv_guest_id";
@@ -9,7 +10,8 @@ function getSigningSecret(): string {
   return (
     process.env.QUOTA_SIGNING_SECRET?.trim() ||
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+    process.env.YOUTUBE_DATA_API_KEY?.trim() ||
+    process.env.TWITCH_CLIENT_SECRET?.trim() ||
     EPHEMERAL_FALLBACK
   );
 }

@@ -12,7 +12,9 @@ import { platformColors } from "@/lib/platforms";
 import type { Creator, Platform, PlatformAccount } from "@/lib/model";
 import { currentFollowers, currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
 import { COMMON_COUNTRIES, detectCreatorCountry, getCountryFlag } from "@/lib/country-detector";
+import { sanitizePublicSourceLabel } from "@/lib/public-labels";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
+import { SearchHintsDropdown, useSearchHints } from "@/components/search-hints-menu";
 
 type Filters = {
   query: string;
@@ -313,8 +315,13 @@ export default function DiscoverPage() {
   } = useProspects();
 
   const [searchInput, setSearchInput] = useState(filters.query);
+  const hintPoolNames = useMemo(
+    () => (liveSearchResults ?? savedCreators).map((c) => c.name),
+    [liveSearchResults, savedCreators],
+  );
+  const discoverHints = useSearchHints(searchInput, hintPoolNames);
 
-  // Execute zero-quota server-cached live API browse feed
+  // Execute zero-quota server-cached live channel directory browse
   const executeBrowseFeed = useCallback(
     async (overrideFilters?: Filters) => {
       const activeFilters = overrideFilters ?? filters;
@@ -337,11 +344,9 @@ export default function DiscoverPage() {
           if (data.connectorStatuses) {
             setConnectorStatuses(data.connectorStatuses);
           }
-          const firstCollected = data.creators[0]?.accounts?.[0]?.snapshots?.[0]?.collectedAt;
           setSearchProvenance({
-            source: data.source || "Live API Browse (15m Server Cache)",
+            source: data.source || "Live Channel Directory",
             isLive: Boolean(data.isLive),
-            retrievedAt: firstCollected || new Date().toISOString(),
           });
           setProviderSummary({
             succeeded: data.succeededProviders || [],
@@ -368,11 +373,12 @@ export default function DiscoverPage() {
     [filters, syncServerQuota],
   );
 
-  // Execute real quota-checked federated search
+  // Execute quota-checked federated search
   const executeSearch = useCallback(
     async (queryToSearch?: string, overrideFilters?: Filters) => {
       const activeFilters = overrideFilters ?? filters;
       const val = (queryToSearch !== undefined ? queryToSearch : searchInput).trim();
+      discoverHints.setOpen(false);
       if (!val) {
         const cleared = { ...activeFilters, query: "" };
         setFilters(cleared);
@@ -408,10 +414,6 @@ export default function DiscoverPage() {
         if (res.status === 429 || data?.quotaExhausted) {
           setLiveSearchResults([]);
           setPricingModalOpen(true);
-          showToast(
-            data?.error || "Search quota exhausted (0 remaining). Quota is enforced on the server.",
-            "error",
-          );
           return;
         }
 
@@ -421,11 +423,9 @@ export default function DiscoverPage() {
           if (data.connectorStatuses) {
             setConnectorStatuses(data.connectorStatuses);
           }
-          const firstCollected = data.creators[0]?.accounts?.[0]?.snapshots?.[0]?.collectedAt;
           setSearchProvenance({
-            source: data.source || "Live Federated Platform Connectors",
+            source: data.source || "Live Channel Discovery",
             isLive: Boolean(data.isLive),
-            retrievedAt: firstCollected || new Date().toISOString(),
           });
           setProviderSummary({
             succeeded: data.succeededProviders || [],
@@ -435,40 +435,14 @@ export default function DiscoverPage() {
             chargeSearch: Boolean(data.chargeSearch),
           });
 
-          // Authoritative server quota already updated via data.subscription above
-          if (data.chargeSearch) {
-            const subToShow = data.subscription;
-            if (!subToShow) {
-              deductSearch();
-            }
-            const remaining = subToShow
-              ? subToShow.searchesRemaining
-              : Math.max(0, subscription.searchesRemaining - 1);
-            const totalQ = subToShow ? subToShow.totalQuota : subscription.totalQuota;
-            const leftText = totalQ === -1 ? "Unlimited" : `${remaining} searches left`;
-            showToast(
-              `Found ${data.creators.length} live creators across ${(data.succeededProviders || []).join(", ") || "platforms"} (${leftText})`,
-              "info",
-            );
-          } else {
-            if (data.failedProviders?.length > 0 && (!data.succeededProviders || data.succeededProviders.length === 0)) {
-              showToast(
-                "All queried providers failed or require credentials. Your search credit was NOT charged.",
-                "info",
-              );
-            } else {
-              showToast(
-                `No live creators found for "${val}". Your search credit was NOT charged.`,
-                "info",
-              );
-            }
+          if (data.chargeSearch && !data.subscription) {
+            deductSearch();
           }
         } else {
           setLiveSearchResults([]);
         }
       } catch {
         if (reqId === requestSeqRef.current) {
-          showToast("Live federated search request failed. Quota was NOT charged.", "error");
           setLiveSearchResults([]);
         }
       } finally {
@@ -480,13 +454,11 @@ export default function DiscoverPage() {
     [
       filters,
       searchInput,
+      discoverHints,
       hasAvailableQuota,
       deductSearch,
       syncServerQuota,
       setPricingModalOpen,
-      subscription.totalQuota,
-      subscription.searchesRemaining,
-      showToast,
       executeBrowseFeed,
     ],
   );
@@ -680,7 +652,7 @@ export default function DiscoverPage() {
                             windowEnd: null,
                             periodLabel: null,
                             sampleSize: null,
-                            source: data.source || `${platform} Platform API`,
+                            source: sanitizePublicSourceLabel(platform, data.source),
                             status: "public" as const,
                           },
                         ]
@@ -704,7 +676,7 @@ export default function DiscoverPage() {
                                   : "Channel snapshot"
                                 : "Channel lifetime average (total views ÷ videos)",
                             sampleSize: null,
-                            source: data.source || `${platform} Platform API`,
+                            source: sanitizePublicSourceLabel(platform, data.source),
                             status: "public" as const,
                           },
                         ]
@@ -715,7 +687,7 @@ export default function DiscoverPage() {
             };
           });
         });
-        showToast(`Refreshed metrics for @${handle} directly from ${platform} API!`, "success");
+        showToast(`Refreshed metrics for @${handle} (${platform})!`, "success");
       } else {
         showToast(data.error || `Could not refresh @${handle}`, "error");
       }
@@ -939,7 +911,7 @@ export default function DiscoverPage() {
       account.activity ?? "Active",
       creator.businessContact?.email ?? "",
       creator.businessContact?.sourceUrl ?? "",
-      account.snapshots[0]?.source || "Live Platform API",
+      sanitizePublicSourceLabel(account.platform, account.snapshots[0]?.source),
       account.snapshots[0]?.collectedAt || "",
     ]);
 
@@ -977,7 +949,7 @@ export default function DiscoverPage() {
         throw new Error(data?.error || "Search quota exhausted (0 searches remaining).");
       }
       if (!res.ok || !data.success) {
-        throw new Error(data.error || `Failed to lookup channel on ${importPlatform}.`);
+        throw new Error(data.error || `Failed to look up channel on ${importPlatform}.`);
       }
 
       const pCreator = data.creator;
@@ -1024,7 +996,7 @@ export default function DiscoverPage() {
                       windowEnd: null,
                       periodLabel: "Point-in-time",
                       sampleSize: null,
-                      source: data.source || `${importPlatform} Platform API`,
+                      source: sanitizePublicSourceLabel(importPlatform, data.source),
                       status: "public" as const,
                     },
                   ]
@@ -1051,7 +1023,7 @@ export default function DiscoverPage() {
                             : "Channel snapshot"
                           : "Channel lifetime average (total views ÷ videos)",
                       sampleSize: null,
-                      source: data.source || `${importPlatform} Platform API`,
+                      source: sanitizePublicSourceLabel(importPlatform, data.source),
                       status: "public" as const,
                     },
                   ]
@@ -1063,7 +1035,7 @@ export default function DiscoverPage() {
         businessContact: pCreator.businessContact || null,
       });
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : "Failed to lookup channel.");
+      setImportError(err instanceof Error ? err.message : "Failed to look up channel.");
     } finally {
       setImportLoading(false);
     }
@@ -1082,7 +1054,7 @@ export default function DiscoverPage() {
       category: importResult.category || "General",
       language: importResult.language ?? null,
       creatorCountry: finalCountry,
-      creatorCountrySource: "Platform API / Channel Data",
+      creatorCountrySource: "Public Channel Profile",
       bio: importResult.bio || "",
       avatar: importResult.avatar || "",
       accounts: importResult.accounts || [],
@@ -1121,8 +1093,8 @@ export default function DiscoverPage() {
           <h1>Find creators across live platforms.</h1>
           <p className="page-subtitle">
             {activePlatforms.Twitch
-              ? "Search YouTube & Twitch creators by keyword, look up Kick channels by @handle, and inspect API-fetched metrics with retrieval timestamps."
-              : "Search YouTube creators by keyword or filter, look up Kick channels by @handle, and inspect API-fetched metrics with retrieval timestamps."}
+              ? "Search YouTube & Twitch creators by keyword, look up Kick channels by @handle, and inspect live metrics with retrieval timestamps."
+              : "Search YouTube creators by keyword or filter, look up Kick channels by @handle, and inspect live metrics with retrieval timestamps."}
           </p>
         </div>
         <div className="page-heading-actions">
@@ -1177,21 +1149,53 @@ export default function DiscoverPage() {
           className="search-field discovery-search"
           onSubmit={(e) => {
             e.preventDefault();
+            discoverHints.setOpen(false);
             void executeSearch();
           }}
         >
           <Search size={16} />
           <input
-            type="search"
+            type="text"
             aria-label="Search creators"
+            autoComplete="off"
+            spellCheck={false}
             placeholder="Search live creators by name, topic, channel handle, or niche..."
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onFocus={() => discoverHints.setOpen(true)}
+            onChange={(e) => {
+              setSearchInput(e.target.value);
+              discoverHints.setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (!discoverHints.isOpen || discoverHints.hints.length === 0) return;
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                discoverHints.setActiveIndex((prev) => (prev + 1) % discoverHints.hints.length);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                discoverHints.setActiveIndex((prev) =>
+                  prev <= 0 ? discoverHints.hints.length - 1 : prev - 1,
+                );
+              } else if (e.key === "Escape") {
+                discoverHints.setOpen(false);
+              } else if (
+                e.key === "Enter" &&
+                discoverHints.activeIndex >= 0 &&
+                discoverHints.hints[discoverHints.activeIndex]
+              ) {
+                e.preventDefault();
+                const chosen = discoverHints.hints[discoverHints.activeIndex];
+                discoverHints.setOpen(false);
+                setSearchInput(chosen);
+                void executeSearch(chosen);
+              }
+            }}
           />
           {searchInput && (
             <button
               className="clear-search"
               onClick={() => {
+                discoverHints.setOpen(false);
                 setSearchInput("");
                 const cleared = { ...filters, query: "" };
                 setFilters(cleared);
@@ -1236,6 +1240,19 @@ export default function DiscoverPage() {
                   : `${subscription.searchesRemaining} / ${subscription.totalQuota} searches`}
             </span>
           </button>
+
+          <SearchHintsDropdown
+            query={searchInput}
+            hints={discoverHints.hints}
+            isOpen={discoverHints.isOpen}
+            activeIndex={discoverHints.activeIndex}
+            onClose={() => discoverHints.setOpen(false)}
+            onSelect={(hint) => {
+              discoverHints.setOpen(false);
+              setSearchInput(hint);
+              void executeSearch(hint);
+            }}
+          />
         </form>
 
         <label className="platform-select-wrap">
@@ -1288,110 +1305,6 @@ export default function DiscoverPage() {
             >
               View Plans
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Federated Search Provenance & Provider Status Bar */}
-      {searchProvenance && (
-        <div
-          className="search-provenance-bar"
-          style={{
-            background: "rgba(34, 197, 94, 0.08)",
-            border: "1px solid rgba(34, 197, 94, 0.22)",
-            borderRadius: 10,
-            padding: "10px 14px",
-            fontSize: 12,
-            marginBottom: 14,
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
-              <strong style={{ color: "#166534" }}>{searchProvenance.source}</strong>
-              <span style={{ color: "#4b6c51" }}>
-                · {isBrowseFeed ? "Cached real API browse feed (0 quota)" : "Live platform lookup"}
-                {searchProvenance.retrievedAt
-                  ? ` · Retrieved ${formatCollectedTimestamp(searchProvenance.retrievedAt)}`
-                  : ""}
-              </span>
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: providerSummary?.chargeSearch ? "#15803d" : "#68836c" }}>
-              {providerSummary?.chargeSearch ? "✓ 1 Search Quota Used" : "✓ 0 Search Quota Charged"}
-            </div>
-          </div>
-
-          {/* Provider Execution Results Badges */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#285d38" }}>Provider Status:</span>
-            {Object.entries(connectorStatuses).map(([plat, stat]) => {
-              const isSuccess = stat.status === "success" || stat.status === "ok";
-              const isUnconfigured = stat.status === "unconfigured";
-              const isUnsupported = stat.status === "unsupported_operation";
-              const isRateLimited = stat.status === "rate_limited";
-              const isError = stat.status === "error";
-
-              let bg = "rgba(100, 116, 139, 0.12)";
-              let color = "#475569";
-              let text = `${plat}: ${stat.status}`;
-
-              if (isSuccess) {
-                const shownCount = displayedCountByPlatform[plat] ?? 0;
-                const serverCount = stat.itemCount ?? stat.count ?? 0;
-                const resultCount = liveSearchResults !== null ? shownCount : serverCount;
-                bg = "rgba(34, 197, 94, 0.16)";
-                color = "#15803d";
-                text =
-                  liveSearchResults !== null && serverCount > shownCount
-                    ? `✓ ${plat}: ${shownCount} shown (${serverCount} fetched)`
-                    : `✓ ${plat}: ${resultCount} ${resultCount === 1 ? "result" : "results"}`;
-              } else if (isUnconfigured) {
-                bg = "rgba(234, 179, 8, 0.14)";
-                color = "#854d0e";
-                text = `⚡ ${plat}: Service Pending`;
-              } else if (isUnsupported) {
-                if (plat === "TikTok" || plat === "Instagram") {
-                  bg = "rgba(100, 116, 139, 0.14)";
-                  color = "#475569";
-                  text = `🔒 ${plat}: OAuth Required`;
-                } else {
-                  const isMultiWord = /\s/.test(filters.query.trim());
-                  bg = "rgba(56, 189, 248, 0.14)";
-                  color = "#0369a1";
-                  text = isMultiWord
-                    ? `ℹ ${plat}: @handle only (skipped multi-word)`
-                    : `ℹ ${plat}: Handle Lookup Only`;
-                }
-              } else if (isRateLimited) {
-                bg = "rgba(249, 115, 22, 0.14)";
-                color = "#c2410c";
-                text = `⏳ ${plat}: Rate Limited`;
-              } else if (isError) {
-                bg = "rgba(239, 68, 68, 0.14)";
-                color = "#b91c1c";
-                text = `✕ ${plat}: Request Error`;
-              }
-
-              return (
-                <span
-                  key={plat}
-                  style={{
-                    fontSize: 11,
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                    background: bg,
-                    color: color,
-                    fontWeight: 500,
-                  }}
-                  title={stat.message || `Connector status for ${plat}`}
-                >
-                  {text}
-                </span>
-              );
-            })}
           </div>
         </div>
       )}
@@ -1665,12 +1578,12 @@ export default function DiscoverPage() {
                 }}
               >
                 <RefreshCw size={12} className={isSearching ? "spin-icon" : ""} />
-                <span>{filters.query.trim() ? "Re-query Live APIs" : "Apply Filters Live"}</span>
+                <span>{filters.query.trim() ? "Re-run Live Search" : "Apply Filters"}</span>
               </button>
               <span className="filter-hint" style={{ margin: 0 }}>
                 {filters.query.trim()
-                  ? "Re-runs keyword query on platform APIs with active filters."
-                  : "Queries real platform APIs for your active filters (0 search quota)."}
+                  ? "Searches matching channels using your active filters."
+                  : "Loads matching live profiles for your active filters (0 search quota)."}
               </span>
             </div>
           </div>
@@ -1681,9 +1594,13 @@ export default function DiscoverPage() {
           <div className="results-toolbar">
             <span className="results-count">
               <strong>{uniqueCreatorCount}</strong> unique {uniqueCreatorCount === 1 ? "creator" : "creators"} · <strong>{results.length}</strong> platform {results.length === 1 ? "account" : "accounts"}
-              {liveSearchResults !== null && (
+              {liveSearchResults !== null && Object.keys(displayedCountByPlatform).length > 0 && (
                 <span style={{ marginLeft: 6, color: "#166534", fontWeight: 600 }}>
-                  {isBrowseFeed ? "(Live API Browse)" : "(Live Search Results)"}
+                  (
+                  {Object.entries(displayedCountByPlatform)
+                    .map(([plat, count]) => `${plat}: ${count}`)
+                    .join(" · ")}
+                  )
                 </span>
               )}
               {liveSearchResults === null && savedCreators.length > 0 && (
@@ -1739,10 +1656,10 @@ export default function DiscoverPage() {
               <div style={{ textAlign: "center", padding: "64px 20px" }}>
                 <RefreshCw size={28} className="spin-icon" style={{ color: "#22c55e", margin: "0 auto 16px" }} />
                 <h3 style={{ fontSize: 16, color: "#1d472b", marginBottom: 6 }}>
-                  {filters.query.trim() ? "Searching active platforms…" : "Loading live creator profiles…"}
+                  {filters.query.trim() ? "Searching live creators…" : "Loading creator profiles…"}
                 </h3>
                 <p style={{ color: "#547359", fontSize: 13, margin: 0 }}>
-                  Querying official platform APIs and reconciling deduplicated creator metrics.
+                  Checking live creator directories and reconciling duplicate channel entries.
                 </p>
               </div>
             ) : results.length ? (
@@ -1750,7 +1667,7 @@ export default function DiscoverPage() {
                 {/* Desktop Results Table (>= 769px) */}
                 <div className="discovery-table-wrap">
                   <div className="table-scroll-cue">
-                    <span>← Swipe horizontally to view all columns & API source details →</span>
+                    <span>← Swipe horizontally to view all columns &amp; source timestamps →</span>
                   </div>
                   <div className="table-wrap">
                     <table className="data-table discovery-table">
@@ -1854,7 +1771,7 @@ export default function DiscoverPage() {
                                     <span className="creator-handle">
                                       {reachLabel} ·{" "}
                                       {liveSearchResults !== null
-                                        ? (reachSnapshot?.periodLabel ?? "API snapshot")
+                                        ? (reachSnapshot?.periodLabel ?? "Live snapshot")
                                         : `Saved (${formatCollectedTimestamp(reachSnapshot?.collectedAt)})`}
                                     </span>
                                   </>
@@ -1864,8 +1781,8 @@ export default function DiscoverPage() {
                                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                                   <span style={{ fontSize: 10, color: liveSearchResults !== null ? "#166534" : "#475569", fontWeight: 600 }}>
                                     {liveSearchResults !== null
-                                      ? `API-Fetched · ${account.snapshots[0]?.source || `${account.platform} API`}`
-                                      : "Saved Workspace Database"}
+                                      ? sanitizePublicSourceLabel(account.platform, account.snapshots[0]?.source)
+                                      : "Saved Workspace"}
                                   </span>
                                   {collectedAt && (
                                     <small style={{ fontSize: 9, color: "var(--muted, #64748b)" }}>
@@ -1892,7 +1809,7 @@ export default function DiscoverPage() {
                                       cursor: "pointer",
                                       width: "fit-content",
                                     }}
-                                    title="Query provider API to refresh metrics now"
+                                    title="Refresh channel metrics now"
                                   >
                                     <RefreshCw size={9} className={isRefreshing ? "spin-icon" : ""} />
                                     <span>{isRefreshing ? "Refreshing…" : "Refresh"}</span>
@@ -2077,8 +1994,8 @@ export default function DiscoverPage() {
                             <span className="provenance-label">Data Source:</span>
                             <span className="provenance-val">
                               {liveSearchResults !== null
-                                ? `API-Fetched · ${reachSnapshot?.source || account.snapshots[0]?.source || `${account.platform} Official API`} (Retrieved: ${formatCollectedTimestamp(reachSnapshot?.collectedAt || account.snapshots[0]?.collectedAt)})`
-                                : `Saved Workspace Database (Retrieved: ${formatCollectedTimestamp(account.snapshots[0]?.collectedAt)})`}
+                                ? `${sanitizePublicSourceLabel(account.platform, reachSnapshot?.source || account.snapshots[0]?.source)} (Retrieved: ${formatCollectedTimestamp(reachSnapshot?.collectedAt || account.snapshots[0]?.collectedAt)})`
+                                : `Saved Workspace (Retrieved: ${formatCollectedTimestamp(account.snapshots[0]?.collectedAt)})`}
                             </span>
                           </div>
                           <div className="provenance-row">
@@ -2252,7 +2169,7 @@ export default function DiscoverPage() {
                       type="button"
                     >
                       <RefreshCw size={13} />{" "}
-                      {filters.query.trim() ? "Re-query Live APIs" : "Query Live APIs with Active Filters"}
+                      {filters.query.trim() ? "Re-run Live Search" : "Apply Active Filters"}
                     </button>
                   )}
                   <button
@@ -2400,12 +2317,7 @@ export default function DiscoverPage() {
                 <div className="auth-error" role="status" style={{ marginTop: 10 }}>
                   <AlertCircle size={14} style={{ flexShrink: 0 }} />
                   <span>
-                    {importPlatform} lookup is currently unavailable for unauthenticated queries. Official{" "}
-                    {importPlatform === "TikTok" ? "TikTok Display API" : "Meta Instagram Graph API"} requires{" "}
-                    {importPlatform === "TikTok"
-                      ? "creator OAuth authorization"
-                      : "Meta App Review and an Instagram Professional account token"}
-                    .
+                    {importPlatform} lookup requires explicit creator or professional account authorization and is unavailable for public handle queries.
                   </span>
                 </div>
               )}
@@ -2425,7 +2337,7 @@ export default function DiscoverPage() {
                 >
                   {importLoading ? (
                     <>
-                      <RefreshCw size={14} className="spin-icon" /> Querying Platform API…
+                      <RefreshCw size={14} className="spin-icon" /> Looking Up Channel…
                     </>
                   ) : isQuotaExhausted ? (
                     <>
@@ -2433,7 +2345,7 @@ export default function DiscoverPage() {
                     </>
                   ) : (
                     <>
-                      <Search size={14} /> Query Handle Live
+                      <Search size={14} /> Look Up Handle
                     </>
                   )}
                 </button>
@@ -2471,7 +2383,7 @@ export default function DiscoverPage() {
                       </small>
                     </div>
                     <span className="status-label status-connected">
-                      <Check size={12} /> API-Fetched
+                      <Check size={12} /> Live Channel
                     </span>
                   </div>
 
@@ -2510,7 +2422,11 @@ export default function DiscoverPage() {
                     }}
                   >
                     <span>
-                      Source: {importResult.accounts?.[0]?.snapshots?.[0]?.source || `${importPlatform} Official API`}
+                      Source:{" "}
+                      {sanitizePublicSourceLabel(
+                        importPlatform,
+                        importResult.accounts?.[0]?.snapshots?.[0]?.source,
+                      )}
                     </span>
                     <span>
                       Retrieved: {formatCollectedTimestamp(importResult.accounts?.[0]?.snapshots?.[0]?.collectedAt)}

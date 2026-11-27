@@ -49,6 +49,23 @@ class SearchCache {
     });
   }
 
+  getCachedNames(): string[] {
+    const names = new Set<string>();
+    const now = Date.now();
+    for (const [key, entry] of this.store.entries()) {
+      if (now > entry.expiresAt) {
+        this.store.delete(key);
+        continue;
+      }
+      for (const item of entry.data.items) {
+        if (item.name?.trim()) names.add(item.name.trim());
+        const cleanHandle = item.handle?.trim().replace(/^@+/, "");
+        if (cleanHandle && cleanHandle.length >= 2) names.add(cleanHandle);
+      }
+    }
+    return Array.from(names);
+  }
+
   clear(): void {
     this.store.clear();
   }

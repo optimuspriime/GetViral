@@ -58,18 +58,22 @@ export async function POST(request: Request) {
 
     const res = await syncUserListsToSupabase(session.userId, body.lists, body.creators);
     if (!res.success) {
-      return NextResponse.json({ error: res.error || "Sync failed" }, { status: 500 });
+      return NextResponse.json({ error: "Unable to sync shortlists right now." }, { status: 500 });
     }
 
     const updated = await loadUserAccountData(session.userId);
-    return NextResponse.json({
-      success: true,
-      lists: updated.lists,
-      creators: updated.creators,
-    });
-  } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save shortlists" },
+      {
+        success: true,
+        lists: updated.lists,
+        creators: updated.creators,
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (error) {
+    console.error("[lists] unexpected error:", error);
+    return NextResponse.json(
+      { error: "Unable to save shortlists right now." },
       { status: 500 },
     );
   }

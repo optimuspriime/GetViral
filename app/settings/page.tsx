@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import {
-  ArrowUpRight, Check, CircleHelp, Database, ExternalLink, KeyRound,
+  ArrowUpRight, Check, CircleHelp, Database, KeyRound,
   RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle,
   Zap, User, Copy, Lock
 } from "lucide-react";
@@ -66,13 +66,13 @@ export default function SettingsPage() {
 
   // Admin-only diagnostic states (never rendered or populated for guests/non-admins)
   const [envStatus, setEnvStatus] = useState<{
-    YOUTUBE_DATA_API_KEY?: boolean;
-    TWITCH_CLIENT_ID?: boolean;
-    TWITCH_CLIENT_SECRET?: boolean;
-    KICK_PUBLIC_API?: boolean;
-    TIKTOK_CLIENT_KEY?: boolean;
-    META_APP_ID?: boolean;
-    NEXT_PUBLIC_SUPABASE_URL?: boolean;
+    youtubeConfigured?: boolean;
+    twitchClientConfigured?: boolean;
+    twitchSecretConfigured?: boolean;
+    kickConfigured?: boolean;
+    tiktokConfigured?: boolean;
+    metaConfigured?: boolean;
+    supabaseConfigured?: boolean;
   } | null>(null);
   const [supabaseUrl, setSupabaseUrl] = useState("");
   const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
@@ -134,7 +134,7 @@ export default function SettingsPage() {
     setAuthError("");
 
     try {
-      saveSupabaseConfig(supabaseUrl, supabaseAnonKey);
+      saveSupabaseConfig();
       const newClient = getSupabaseBrowserClient();
       if (newClient) {
         const { error } = await newClient.auth.getSession();
@@ -223,7 +223,7 @@ export default function SettingsPage() {
           ...prev,
           [platform]: {
             status: "success",
-            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? `${platform} API`}, freshness: ${data.dataFreshness ?? "Live Response"})`,
+            message: `Verified! Channel: ${data.creator?.handle} (Source: ${data.source ?? platform}, freshness: ${data.dataFreshness ?? "Live Snapshot"})`,
           },
         }));
         showToast(`${platform} connection verified!`, "success");
@@ -450,16 +450,6 @@ create extension if not exists pgcrypto;
                           )}
                         </button>
                       )}
-                      <a
-                        className="docs-link"
-                        href={integration.documentationUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`${integration.platform} official documentation`}
-                        title="Official platform documentation"
-                      >
-                        <ExternalLink size={13} />
-                      </a>
                     </div>
                   </div>
                 );
@@ -467,16 +457,16 @@ create extension if not exists pgcrypto;
             </div>
           </div>
 
-          {/* Admin-Only Live API Query Sandbox */}
+          {/* Admin-Only Live Channel Probe Console */}
           {isAdmin && (
             <div className="card section-spacer">
               <div className="card-head">
                 <div>
                   <h2 className="card-title">
-                    <Terminal size={14} className="inline-icon" /> Admin API Probe Console
+                    <Terminal size={14} className="inline-icon" /> Admin Channel Probe Console
                   </h2>
                   <p className="card-caption">
-                    Internal operator diagnostic endpoint tester (ADMIN_EMAILS only)
+                    Internal operator diagnostic tester (ADMIN_EMAILS only)
                   </p>
                 </div>
               </div>
@@ -521,7 +511,7 @@ create extension if not exists pgcrypto;
 
                 {testConsoleOutput && (
                   <div className="console-output-wrap">
-                    <div className="console-output-label">API RESPONSE</div>
+                    <div className="console-output-label">PROBE RESPONSE</div>
                     <pre className="console-output-pre">{testConsoleOutput}</pre>
                   </div>
                 )}
@@ -532,7 +522,7 @@ create extension if not exists pgcrypto;
           <div className="notice-bar section-spacer">
             <CircleHelp size={14} />
             <span>
-              <strong>Transparent Attribution:</strong> GetViral retrieves channel reach and public business emails strictly from official platform endpoints with origin timestamps, and complies with{" "}
+              <strong>Transparent Attribution:</strong> GetViral retrieves channel reach and public business emails from live connected channels with origin timestamps, and complies with{" "}
               <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
                 YouTube Terms of Service
               </a>.
@@ -771,16 +761,16 @@ create extension if not exists pgcrypto;
                   <div className="card-head">
                     <div>
                       <h2 className="card-title">Admin Server Environment Check</h2>
-                      <p className="card-caption">Internal deployment variables</p>
+                      <p className="card-caption">Internal connector provisioning status</p>
                     </div>
                     <KeyRound size={15} color="#46735a" />
                   </div>
                   <ul className="principle-list">
-                    <li><code>YOUTUBE_DATA_API_KEY</code>: {envStatus.YOUTUBE_DATA_API_KEY ? "Configured" : "Not Set"}</li>
-                    <li><code>TWITCH_CLIENT_ID / SECRET</code>: {envStatus.TWITCH_CLIENT_ID && envStatus.TWITCH_CLIENT_SECRET ? "Configured" : "Not Set"}</li>
-                    <li><code>KICK_PUBLIC_API</code>: Active</li>
-                    <li><code>TIKTOK_CLIENT_KEY</code>: {envStatus.TIKTOK_CLIENT_KEY ? "Set (OAuth needed)" : "Not Set"}</li>
-                    <li><code>META_APP_ID</code>: {envStatus.META_APP_ID ? "Set (OAuth needed)" : "Not Set"}</li>
+                    <li>YouTube Connector: {envStatus.youtubeConfigured ? "Configured" : "Not Set"}</li>
+                    <li>Twitch Connector: {envStatus.twitchClientConfigured && envStatus.twitchSecretConfigured ? "Configured" : "Not Set"}</li>
+                    <li>Kick Channel Service: {envStatus.kickConfigured ? "Active" : "Offline"}</li>
+                    <li>TikTok OAuth App: {envStatus.tiktokConfigured ? "Configured (OAuth needed)" : "Not Set"}</li>
+                    <li>Instagram OAuth App: {envStatus.metaConfigured ? "Configured (OAuth needed)" : "Not Set"}</li>
                   </ul>
                 </div>
               )}

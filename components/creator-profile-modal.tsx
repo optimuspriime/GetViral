@@ -354,7 +354,7 @@ export function CreatorProfileModal() {
             </span>
             <h2 id="creator-profile-modal-title">Create or Claim Your Creator Profile</h2>
             <p>
-              Not indexed by the platform APIs yet? Publish your verified handle, metrics, and business email to get discovered by brands and sponsors.
+              Not listed in public channel search yet? Publish your verified handle, metrics, and business email to get discovered by brands and sponsors.
             </p>
           </div>
 

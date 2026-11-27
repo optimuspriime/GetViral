@@ -18,6 +18,7 @@ import type { Creator, PlatformAccount } from "@/lib/model";
 import { currentFollowers, currentReach, reachMetricName } from "@/lib/metrics";
 import { getCountryFlag } from "@/lib/country-detector";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
+import { SearchHintsDropdown, useSearchHints } from "@/components/search-hints-menu";
 
 type AccountWithCreator = { creator: Creator; account: PlatformAccount };
 
@@ -28,6 +29,8 @@ export default function DashboardPage() {
   const [quickSearchInput, setQuickSearchInput] = useState("");
   const explainerDialogRef = useRef<HTMLDivElement>(null);
   const explainerCloseRef = useRef<HTMLButtonElement>(null);
+  const knownCreatorNames = useMemo(() => creators.map((c) => c.name), [creators]);
+  const heroHints = useSearchHints(quickSearchInput, knownCreatorNames);
 
   useDialogAccessibility(showExplainer, () => setShowExplainer(false), explainerDialogRef, explainerCloseRef);
 
@@ -143,33 +146,71 @@ export default function DashboardPage() {
 
           {/* Primary Search CTA */}
           <form onSubmit={handleQuickSearch} className="hero-search-form" style={{ maxWidth: 640, margin: "20px 0 14px" }}>
-            <div className="search-field" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderRadius: 12 }}>
-              <Search size={18} className="text-muted" />
-              <input
-                className="hero-search-input"
-                style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15 }}
-                placeholder={
-                  isQuotaExhausted
-                    ? isGuest
-                      ? "Guest preview limit reached (0/5) — sign in for 50 monthly searches"
-                      : "Monthly quota reached (0 remaining) — view plans"
-                    : connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
-                      ? "Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
-                      : "Search live creators on YouTube by topic or look up Kick @handles..."
-                }
-                value={quickSearchInput}
-                disabled={isQuotaExhausted}
-                onChange={(e) => setQuickSearchInput(e.target.value)}
+            <div className="search-input-shell">
+              <div className="search-field" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderRadius: 12 }}>
+                <Search size={18} className="text-muted" />
+                <input
+                  className="hero-search-input"
+                  style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15 }}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={
+                    isQuotaExhausted
+                      ? isGuest
+                        ? "Guest preview limit reached (0/5) — sign in for 50 monthly searches"
+                        : "Monthly quota reached (0 remaining) — view plans"
+                      : connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
+                        ? "Search creators by keyword (YouTube / Twitch) or exact @handle (Kick)..."
+                        : "Search live creators on YouTube by topic or look up Kick @handles..."
+                  }
+                  value={quickSearchInput}
+                  disabled={isQuotaExhausted}
+                  onFocus={() => heroHints.setOpen(true)}
+                  onChange={(e) => {
+                    setQuickSearchInput(e.target.value);
+                    heroHints.setOpen(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!heroHints.isOpen || heroHints.hints.length === 0) return;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      heroHints.setActiveIndex((prev) => (prev + 1) % heroHints.hints.length);
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      heroHints.setActiveIndex((prev) => (prev <= 0 ? heroHints.hints.length - 1 : prev - 1));
+                    } else if (e.key === "Escape") {
+                      heroHints.setOpen(false);
+                    } else if (e.key === "Enter" && heroHints.activeIndex >= 0 && heroHints.hints[heroHints.activeIndex]) {
+                      e.preventDefault();
+                      const chosen = heroHints.hints[heroHints.activeIndex];
+                      heroHints.setOpen(false);
+                      setQuickSearchInput(chosen);
+                      router.push(`/discover?q=${encodeURIComponent(chosen)}`);
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="button button-primary button-sm"
+                  style={{ padding: "7px 18px" }}
+                  disabled={isQuotaExhausted}
+                  title={isQuotaExhausted ? "Search quota exhausted" : undefined}
+                >
+                  {isQuotaExhausted ? "Limit Reached" : "Search Creators"}
+                </button>
+              </div>
+              <SearchHintsDropdown
+                query={quickSearchInput}
+                hints={heroHints.hints}
+                isOpen={heroHints.isOpen}
+                activeIndex={heroHints.activeIndex}
+                onClose={() => heroHints.setOpen(false)}
+                onSelect={(hint) => {
+                  heroHints.setOpen(false);
+                  setQuickSearchInput(hint);
+                  router.push(`/discover?q=${encodeURIComponent(hint)}`);
+                }}
               />
-              <button
-                type="submit"
-                className="button button-primary button-sm"
-                style={{ padding: "7px 18px" }}
-                disabled={isQuotaExhausted}
-                title={isQuotaExhausted ? "Search quota exhausted" : undefined}
-              >
-                {isQuotaExhausted ? "Limit Reached" : "Search Creators"}
-              </button>
             </div>
 
             {isQuotaExhausted && (
@@ -466,7 +507,7 @@ export default function DashboardPage() {
               />
               <div className="chart-legend">
                 <span>
-                  <CheckCircle2 size={12} className="inline-icon text-green" /> Platform API snapshots
+                  <CheckCircle2 size={12} className="inline-icon text-green" /> Channel data snapshots
                 </span>
                 <span suppressHydrationWarning>Updated {lastCollected ? formatDate(lastCollected) : "Recently"}</span>
               </div>
@@ -622,7 +663,7 @@ export default function DashboardPage() {
             <div className="modal-header">
               <div className="modal-title-wrap">
                 <CircleHelp size={20} className="modal-icon-green" />
-                <h3 id="capability-guide-title">Platform Capabilities &amp; Technical Guide</h3>
+                <h3 id="capability-guide-title">Platform Capabilities Guide</h3>
               </div>
               <button
                 ref={explainerCloseRef}
@@ -640,15 +681,15 @@ export default function DashboardPage() {
                   <Globe size={16} /> <strong>Real-Time Queries &amp; Freshness</strong>
                 </div>
                 <p>
-                  Queries execute at runtime against official provider endpoints without fixed mock catalogs. Every result carries a provider source label and fetched timestamp.
+                  Searches run dynamically across active channel connections without fixed mock catalogs. Every result carries a clear source label and retrieval timestamp.
                 </p>
               </div>
               <div className="definition-card-item">
                 <div className="definition-head">
-                  <Radio size={16} /> <strong>YouTube Data API v3 &amp; Twitch Helix</strong>
+                  <Radio size={16} /> <strong>YouTube &amp; Twitch Discovery</strong>
                 </div>
                 <p>
-                  Support keyword search and live channel metrics when platform services are enabled. Subject to YouTube API Services Terms and Twitch developer guidelines.
+                  Support keyword search and public channel metrics when platform services are enabled. Subject to YouTube Terms of Service and Twitch developer guidelines.
                 </p>
               </div>
               <div className="definition-card-item">
@@ -664,7 +705,7 @@ export default function DashboardPage() {
                   <ShieldCheck size={16} /> <strong>TikTok &amp; Instagram OAuth Scope</strong>
                 </div>
                 <p>
-                  TikTok Display API and Meta Instagram Graph API require creator or Professional account OAuth authorization. Unauthenticated consumer scraping is never used.
+                  TikTok and Instagram require direct creator or professional account authorization before metrics can be accessed. Unauthenticated scraping is never used.
                 </p>
               </div>
             </div>

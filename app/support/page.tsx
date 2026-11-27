@@ -28,7 +28,7 @@ export default function SupportPage() {
         <ul>
           <li><strong>YouTube &amp; Twitch:</strong> Support keyword search and live channel metrics when platform services are active.</li>
           <li><strong>Kick:</strong> Supports exact single-word handle lookup only (for example, <code>adinross</code> or <code>@xqc</code>). Multi-word phrases are automatically skipped on Kick.</li>
-          <li><strong>TikTok &amp; Instagram:</strong> Official APIs require individual creator or Meta Professional OAuth authorization and are unavailable for anonymous public keyword discovery.</li>
+          <li><strong>TikTok &amp; Instagram:</strong> Require individual creator or professional account authorization and are unavailable for anonymous public keyword discovery.</li>
         </ul>
       </section>
 

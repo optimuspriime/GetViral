@@ -1,3 +1,4 @@
+import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@supabase/supabase-js";
 import type { Creator, PlatformAccount, MetricSnapshot, AudienceInsight, ProspectList, ProspectStatus } from "@/lib/model";

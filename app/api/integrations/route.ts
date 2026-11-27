@@ -71,8 +71,8 @@ export async function GET(request: Request) {
 
     return {
       ...item,
-      // Omit technical setup details for unauthenticated non-admin viewers if needed, keep marketer summary clean
-      apiSpec: session.isAdmin ? item.apiSpec : "",
+      documentationUrl: "",
+      apiSpec: "",
       connected,
       mode,
       connectorStatus,
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
 
   const activeCount = integrations.filter((i) => i.connected).length;
 
-  // Never expose server environment variable names or DB topology to non-admin users
+  // Never expose server environment variable names, API docs, or DB topology to non-admin users
   const payload: Record<string, unknown> = {
     status: "ok",
     activeCount,
@@ -96,13 +96,13 @@ export async function GET(request: Request) {
 
   if (session.isAdmin) {
     payload.envStatus = {
-      YOUTUBE_DATA_API_KEY: hasYouTube,
-      TWITCH_CLIENT_ID: hasTwitchId,
-      TWITCH_CLIENT_SECRET: hasTwitchSecret,
-      KICK_PUBLIC_API: hasKick,
-      TIKTOK_CLIENT_KEY: hasTikTokKey,
-      META_APP_ID: hasMetaApp,
-      NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
+      youtubeConfigured: hasYouTube,
+      twitchClientConfigured: hasTwitchId,
+      twitchSecretConfigured: hasTwitchSecret,
+      kickConfigured: hasKick,
+      tiktokConfigured: hasTikTokKey,
+      metaConfigured: hasMetaApp,
+      supabaseConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
     };
     payload.database = {
       configured: Boolean(
@@ -112,5 +112,5 @@ export async function GET(request: Request) {
     };
   }
 
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
 }

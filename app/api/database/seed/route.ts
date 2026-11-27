@@ -64,13 +64,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Synchronized ${liveInserted} saved creator(s) with live platform APIs!`,
+      message: `Synchronized ${liveInserted} saved creator(s) with live channels!`,
       inserted: liveInserted,
       table: "public.creators",
     });
   } catch (error) {
+    console.error("[database/seed] unexpected error:", error);
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : "Failed to sync database" },
+      { success: false, message: "Unable to complete database refresh right now." },
       { status: 500 },
     );
   }

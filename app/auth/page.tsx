@@ -85,7 +85,7 @@ export default function AuthPage() {
 
       if (!activeClient) {
         setError(
-          "Authentication service is not configured on this server (missing NEXT_PUBLIC_SUPABASE_URL / ANON_KEY). Explore in Guest Sandbox or configure Supabase in Settings.",
+          "Account sign-in is temporarily unavailable right now. You can continue exploring in Guest Preview.",
         );
         return;
       }

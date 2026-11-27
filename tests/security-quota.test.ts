@@ -19,6 +19,8 @@ import {
   resolveCountryToIso,
   resolveLanguageToIso,
 } from "../lib/creator-metadata";
+import { sanitizePublicSourceLabel } from "../lib/public-labels";
+import { sanitizePublicErrorMessage } from "../lib/server-sanitize";
 import { currentReach } from "../lib/metrics";
 
 test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
@@ -229,5 +231,23 @@ test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
     );
     assert.equal(resolveCountryToIso("India"), "IN");
     assert.equal(resolveLanguageToIso("Hindi"), "hi");
+  });
+
+  await t.test("12. Public label sanitizer strips internal API versions, env names, and endpoint leaks", () => {
+    assert.equal(sanitizePublicSourceLabel("YouTube", "YouTube Data API v3"), "YouTube Public Channel");
+    assert.equal(sanitizePublicSourceLabel("Kick", "Kick API v2"), "Kick Public Channel");
+    assert.equal(sanitizePublicSourceLabel("Twitch", "Twitch Helix API"), "Twitch Public Channel");
+
+    const sanitizedMissingKey = sanitizePublicErrorMessage(
+      "Set YOUTUBE_DATA_API_KEY in server environment variables",
+      "YouTube",
+    );
+    assert.equal(sanitizedMissingKey.includes("YOUTUBE_DATA_API_KEY"), false);
+
+    const sanitizedVersion = sanitizePublicErrorMessage(
+      "TikTok Display API requires user token under Graph API v3",
+      "TikTok",
+    );
+    assert.equal(/\bAPI\b|\bv3\b|\bHelix\b/i.test(sanitizedVersion), false);
   });
 });

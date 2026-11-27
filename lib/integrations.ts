@@ -26,13 +26,13 @@ export interface IntegrationsHealthPayload {
   isAdmin?: boolean;
   integrations: IntegrationHealthItem[];
   envStatus?: {
-    YOUTUBE_DATA_API_KEY: boolean;
-    TWITCH_CLIENT_ID: boolean;
-    TWITCH_CLIENT_SECRET: boolean;
-    KICK_PUBLIC_API: boolean;
-    TIKTOK_CLIENT_KEY: boolean;
-    META_APP_ID: boolean;
-    NEXT_PUBLIC_SUPABASE_URL: boolean;
+    youtubeConfigured: boolean;
+    twitchClientConfigured: boolean;
+    twitchSecretConfigured: boolean;
+    kickConfigured: boolean;
+    tiktokConfigured: boolean;
+    metaConfigured: boolean;
+    supabaseConfigured: boolean;
   };
   database?: {
     configured: boolean;
@@ -43,10 +43,10 @@ export interface IntegrationsHealthPayload {
 export const INTEGRATIONS: IntegrationInfo[] = [
   {
     platform: "YouTube",
-    documentationUrl: "https://developers.google.com/youtube/v3/docs",
+    documentationUrl: "",
     setup: "Live channel keyword search and public subscriber & view metrics.",
-    limitation: "Subject to daily YouTube API Services quota limits.",
-    apiSpec: "YouTube Data API v3 (keyword search + channel statistics)",
+    limitation: "Subject to daily platform search capacity limits.",
+    apiSpec: "",
     connectorStatus: "Service Unavailable",
     statusNote: "Channel keyword search & public statistics",
     supportsLiveDiscovery: true,
@@ -54,10 +54,10 @@ export const INTEGRATIONS: IntegrationInfo[] = [
   },
   {
     platform: "Twitch",
-    documentationUrl: "https://dev.twitch.tv/docs/api/reference/",
+    documentationUrl: "",
     setup: "Live streamer discovery, category filtering, and concurrent viewer metrics.",
-    limitation: "Requires active Twitch Developer app credentials configured on the server.",
-    apiSpec: "Twitch Helix API (App Access OAuth + streams lookup)",
+    limitation: "Requires active Twitch integration activation on server.",
+    apiSpec: "",
     connectorStatus: "Service Unavailable",
     statusNote: "Streamer keyword search & live viewer metrics",
     supportsLiveDiscovery: true,
@@ -65,10 +65,10 @@ export const INTEGRATIONS: IntegrationInfo[] = [
   },
   {
     platform: "Kick",
-    documentationUrl: "https://docs.kick.com/apis/",
+    documentationUrl: "",
     setup: "Direct lookup by exact single-word channel @handle with live viewer & follower counts.",
     limitation: "Supports exact single-word @handle lookup only; multi-word keyword browsing is unsupported by Kick.",
-    apiSpec: "Kick Channel Endpoint (exact handle resolution; api.kick.com OAuth 2.1 for partner tier)",
+    apiSpec: "",
     connectorStatus: "Handle Lookup Active",
     statusNote: "Exact @handle lookup (single-word channels)",
     supportsLiveDiscovery: false,
@@ -76,10 +76,10 @@ export const INTEGRATIONS: IntegrationInfo[] = [
   },
   {
     platform: "TikTok",
-    documentationUrl: "https://developers.tiktok.com/doc/display-api-overview/",
+    documentationUrl: "",
     setup: "Connect verified TikTok creator accounts with explicit creator permission.",
     limitation: "Requires TikTok Creator OAuth authorization. Public keyword search across arbitrary accounts is not permitted.",
-    apiSpec: "TikTok Display API (Creator OAuth token required)",
+    apiSpec: "",
     connectorStatus: "Creator OAuth Required",
     statusNote: "Requires TikTok Creator OAuth",
     supportsLiveDiscovery: false,
@@ -88,12 +88,12 @@ export const INTEGRATIONS: IntegrationInfo[] = [
   },
   {
     platform: "Instagram",
-    documentationUrl: "https://developers.facebook.com/documentation/instagram-platform/",
-    setup: "Connect authorized Instagram Professional accounts via Meta permissions.",
-    limitation: "Requires Meta App Review and an Instagram Professional account token. Open keyword search is prohibited.",
-    apiSpec: "Meta Instagram Graph API (Professional account token required)",
-    connectorStatus: "Meta OAuth Required",
-    statusNote: "Requires Meta Professional OAuth",
+    documentationUrl: "",
+    setup: "Connect authorized Instagram Professional accounts with explicit account permission.",
+    limitation: "Requires an Instagram Professional account authorization. Open keyword search is unsupported.",
+    apiSpec: "",
+    connectorStatus: "Creator OAuth Required",
+    statusNote: "Requires Instagram Professional OAuth",
     supportsLiveDiscovery: false,
     supportsHandleLookup: false,
     requiresCreatorOAuth: true,

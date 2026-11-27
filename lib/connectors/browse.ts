@@ -109,11 +109,11 @@ export async function getLiveBrowseCreators(
         return {
           platform: "Kick",
           status: sawSuccess ? "success" : "error",
-          message: sawSuccess ? undefined : lastError || "Kick browse lookup unavailable",
+          message: sawSuccess ? undefined : lastError || "Kick lookup temporarily unavailable",
           items,
           capabilities: kickCapabilities,
           fetchedAt: now,
-          source: "Kick API v2",
+          source: "Kick Public Channel",
           isLive: sawSuccess,
         };
       }),
@@ -197,7 +197,7 @@ export async function getLiveBrowseCreators(
       seen.add(key);
       deduped.push({
         ...item,
-        freshness: "Cached Live API Browse (15m TTL)",
+        freshness: "Cached Live Browse (15m TTL)",
         isLive: false,
       });
       counts[item.platform] = (counts[item.platform] ?? 0) + 1;

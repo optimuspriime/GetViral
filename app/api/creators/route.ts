@@ -4,6 +4,8 @@ import { federatedSearch } from "@/lib/connectors/federated";
 import { getLiveBrowseCreators } from "@/lib/connectors/browse";
 import type { ConnectorStatus, NormalizedCreator } from "@/lib/connectors/types";
 import { resolveCountryToIso, resolveLanguageToIso } from "@/lib/creator-metadata";
+import { sanitizePublicSourceLabel } from "@/lib/public-labels";
+import { sanitizePublicErrorMessage } from "@/lib/server-sanitize";
 import { loadUserAccountData, saveCreatorsToSupabase, syncUserListsToSupabase } from "@/lib/supabase/db-sync";
 import { attachGuestCookie, resolveServerSession } from "@/lib/auth/server-session";
 import {
@@ -13,13 +15,14 @@ import {
 } from "@/lib/quota/server-quota";
 
 function normalizeToWorkspaceCreator(c: NormalizedCreator): Creator {
+  const publicSource = sanitizePublicSourceLabel(c.platform, c.source);
   return {
     id: c.id,
     name: c.name,
     category: c.category || "General",
     language: c.language ?? null,
     creatorCountry: c.country,
-    creatorCountrySource: c.country ? "Live Platform API" : null,
+    creatorCountrySource: c.country ? "Public Channel Profile" : null,
     audienceInsights: [],
     bio: c.bio || `${c.name} on ${c.platform}`,
     avatar: c.avatarUrl || "",
@@ -44,7 +47,7 @@ function normalizeToWorkspaceCreator(c: NormalizedCreator): Creator {
                   windowEnd: null,
                   periodLabel: null,
                   sampleSize: null,
-                  source: c.source,
+                  source: publicSource,
                   status: "public" as const,
                 },
               ]
@@ -64,7 +67,7 @@ function normalizeToWorkspaceCreator(c: NormalizedCreator): Creator {
                     ? "Current live stream"
                     : "Channel lifetime average (total views ÷ videos)",
                   sampleSize: null,
-                  source: c.source,
+                  source: publicSource,
                   status: "public" as const,
                 },
               ]
@@ -85,7 +88,6 @@ function buildFilteredCreatorsAndStatuses(
     minFollowers: number | null;
     maxFollowers: number | null;
   },
-  isAdmin: boolean,
 ) {
   let filtered = rawCreators.map(normalizeToWorkspaceCreator);
 
@@ -138,35 +140,30 @@ function buildFilteredCreatorsAndStatuses(
       if (statusObj.status === "success") {
         succeededProviders.push(p);
         if (upstreamCount > shownCount && shownCount > 0) {
-          msg = `${shownCount} displayed (${upstreamCount} fetched before filters)`;
+          msg = `${shownCount} displayed (${upstreamCount} matched before filters)`;
+        } else if (msg) {
+          msg = sanitizePublicErrorMessage(msg, p);
         }
       } else if (statusObj.status === "error" || statusObj.status === "rate_limited") {
         failedProviders.push(p);
+        msg = sanitizePublicErrorMessage(msg, p, `${p} lookup is temporarily unavailable.`);
       } else if (statusObj.status === "unconfigured") {
         unconfiguredProviders.push(p);
-        if (!isAdmin) {
-          msg = `${p} live search is temporarily pending activation.`;
-        }
+        msg = `${p} live search is temporarily pending activation.`;
       } else if (statusObj.status === "unsupported_operation") {
         unsupportedProviders.push(p);
+        msg = sanitizePublicErrorMessage(msg, p);
       }
 
-      const capObj = statusObj.capabilities as { requiresApiKey?: boolean; authorizationRequirement?: string };
       return [
         p,
         {
-          ...statusObj,
+          status: statusObj.status,
+          isLive: statusObj.isLive,
+          cached: statusObj.cached,
           itemCount: statusObj.status === "success" ? shownCount : statusObj.itemCount,
           fetchedCount: upstreamCount,
           message: msg,
-          capabilities: isAdmin
-            ? statusObj.capabilities
-            : {
-                ...capObj,
-                authorizationRequirement: capObj.requiresApiKey
-                  ? `Managed server integration for ${p}.`
-                  : capObj.authorizationRequirement,
-              },
         },
       ];
     }),
@@ -184,7 +181,7 @@ function buildFilteredCreatorsAndStatuses(
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const q = searchParams.get("q")?.trim() || "";
+  const q = (searchParams.get("q")?.trim() || "").slice(0, 120);
   const browse = searchParams.get("browse") === "1";
   const platform = searchParams.get("platform") as Platform | "All platforms" | null;
   const category = searchParams.get("category");
@@ -210,7 +207,7 @@ export async function GET(request: Request) {
           quotaExhausted: true,
           chargeSearch: false,
           subscription: quotaCheck.subscription,
-          source: "Live Platform Discovery",
+          source: "Live Channel Discovery",
           isLive: false,
         },
         { status: 429 },
@@ -235,7 +232,6 @@ export async function GET(request: Request) {
       federated.creators,
       federated.connectorStatuses,
       { category, country, language, minFollowers, maxFollowers },
-      session.isAdmin,
     );
 
     // Charge quota ONLY if at least one real provider succeeded and returned results
@@ -255,7 +251,7 @@ export async function GET(request: Request) {
       unsupportedProviders: processed.unsupportedProviders,
       chargeSearch,
       subscription: latestSubscription,
-      source: "Live Platform Discovery",
+      source: "Live Channel Discovery",
       isLive: true,
     });
 
@@ -264,7 +260,7 @@ export async function GET(request: Request) {
     return response;
   }
 
-  // 2. Server-cached live API browse feed (populates /discover on load & filter browse without charging user quota)
+  // 2. Server-cached live browse feed (populates /discover on load & filter browse without charging user quota)
   if (browse) {
     const quotaCheck = await checkServerQuotaAvailable(session);
     const browseData = await getLiveBrowseCreators({
@@ -279,7 +275,6 @@ export async function GET(request: Request) {
       browseData.creators,
       browseData.connectorStatuses,
       { category, country, language, minFollowers, maxFollowers },
-      session.isAdmin,
     );
 
     const browseRes = NextResponse.json({
@@ -293,7 +288,7 @@ export async function GET(request: Request) {
       unsupportedProviders: processed.unsupportedProviders,
       chargeSearch: false,
       subscription: quotaCheck.subscription,
-      source: "Live API Browse (15m Server Cache)",
+      source: "Live Channel Directory",
       isLive: false,
       isBrowse: true,
     });
@@ -315,13 +310,16 @@ export async function GET(request: Request) {
   }
 
   const { creators: userSavedCreators } = await loadUserAccountData(session.userId);
-  return NextResponse.json({
-    query: "",
-    total: userSavedCreators.length,
-    creators: userSavedCreators,
-    source: "Authenticated User Workspace",
-    isLive: false,
-  });
+  return NextResponse.json(
+    {
+      query: "",
+      total: userSavedCreators.length,
+      creators: userSavedCreators,
+      source: "Authenticated User Workspace",
+      isLive: false,
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 export async function POST(request: Request) {
@@ -346,9 +344,9 @@ export async function POST(request: Request) {
       id: body.id || `creator-${Date.now()}`,
       name: body.name,
       category: body.category ?? "General",
-      language: body.language ?? "English",
+      language: body.language ?? null,
       creatorCountry: body.creatorCountry ?? null,
-      creatorCountrySource: body.creatorCountrySource ?? "Platform API",
+      creatorCountrySource: body.creatorCountrySource ?? "Public Channel Profile",
       bio: body.bio ?? "",
       avatar: body.avatar ?? "",
       businessContact: body.businessContact ?? null,
@@ -378,8 +376,9 @@ export async function POST(request: Request) {
       creator: newCreator,
     });
   } catch (error) {
+    console.error("[creators POST] unexpected error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save creator" },
+      { error: "Unable to save creator right now." },
       { status: 500 },
     );
   }

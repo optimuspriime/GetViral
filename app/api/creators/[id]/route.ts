@@ -30,10 +30,13 @@ export async function GET(
     if (!creator) {
       return NextResponse.json({ error: "Creator profile not found." }, { status: 404 });
     }
-    return NextResponse.json(creator);
+    return NextResponse.json(creator, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (err) {
+    console.error("[creators/[id]] error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load creator" },
+      { error: "Unable to load creator profile right now." },
       { status: 500 },
     );
   }

@@ -11,6 +11,7 @@ import { platformColors, platformMetricLabel } from "@/lib/platforms";
 import { currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
 import type { Creator, MetricSnapshot, PlatformAccount } from "@/lib/model";
 import { getCountryFlag } from "@/lib/country-detector";
+import { sanitizePublicSourceLabel } from "@/lib/public-labels";
 import { useEffect, useState, useMemo } from "react";
 
 export default function CreatorProfilePage() {
@@ -56,7 +57,7 @@ export default function CreatorProfilePage() {
               category: p.category || "General",
               language: p.language ?? null,
               creatorCountry: p.country || null,
-              creatorCountrySource: p.country ? "Live Platform API" : null,
+              creatorCountrySource: p.country ? "Public Channel Profile" : null,
               bio: p.bio || `${p.name || p.handle} on ${p.platform}`,
               avatar: p.avatarUrl || "",
               businessContact: p.businessContact || null,
@@ -81,7 +82,7 @@ export default function CreatorProfilePage() {
                             windowEnd: null,
                             periodLabel: null,
                             sampleSize: null,
-                            source: data.source || `${p.platform} API`,
+                            source: sanitizePublicSourceLabel(p.platform, data.source),
                             status: "public" as const,
                           },
                         ]
@@ -100,7 +101,7 @@ export default function CreatorProfilePage() {
                               ? "Current live stream"
                               : "Channel lifetime average (total views ÷ videos)",
                             sampleSize: null,
-                            source: data.source || `${p.platform} API`,
+                            source: sanitizePublicSourceLabel(p.platform, data.source),
                             status: "public" as const,
                           },
                         ]
@@ -125,7 +126,7 @@ export default function CreatorProfilePage() {
           <strong>{loadingTransient ? "Loading live creator profile…" : "Creator profile not found"}</strong>
           <p>
             {loadingTransient
-              ? "Querying live platform API for channel details."
+              ? "Fetching latest public channel details."
               : "This profile is not currently in your active workspace catalog."}
           </p>
           <Link href="/discover?restore=1" className="button button-secondary button-sm">
@@ -206,7 +207,7 @@ export default function CreatorProfilePage() {
 
           <div className="profile-main">
             <div className="eyebrow">
-              <Sparkles size={11} className="inline-icon" /> API-FETCHED CREATOR PROFILE
+              <Sparkles size={11} className="inline-icon" /> CREATOR PROFILE
             </div>
             <h1>{creator.name}</h1>
             <div className="profile-meta">
@@ -318,7 +319,7 @@ export default function CreatorProfilePage() {
             <div>
               <h2 className="card-title">Dated Metric Observations</h2>
               <p className="card-caption">
-                Historical snapshot timeline from official platform APIs
+                Historical snapshot timeline from connected channel sources
               </p>
             </div>
             <CircleHelp size={15} color="#97a29a" />
@@ -372,8 +373,8 @@ export default function CreatorProfilePage() {
           </div>
 
           <div className="definition">
-            <strong>Data Provenance &amp; Calculation:</strong> Metrics are fetched from official
-            platform endpoints (not platform verification badges). YouTube Avg. Video Views equals{" "}
+            <strong>Data Provenance &amp; Calculation:</strong> Metrics come from connected public
+            channels (not platform verification badges). YouTube Avg. Video Views equals{" "}
             <em>total channel views ÷ total uploaded videos</em> (lifetime channel stats). Kick &amp;
             Twitch reach shows real-time concurrent broadcast viewers when streaming live.
           </div>
@@ -383,7 +384,7 @@ export default function CreatorProfilePage() {
           <div className="card-head">
             <div>
               <h2 className="card-title">Profile &amp; Audience Provenance</h2>
-              <p className="card-caption">API-fetched sources and authorization status</p>
+              <p className="card-caption">Channel sources and authorization status</p>
             </div>
           </div>
 
@@ -559,7 +560,7 @@ function AccountMetricCards({ account }: { account: PlatformAccount }) {
             {followers === null ? "—" : formatNumber(followers)}
           </div>
           <div className="metric-sub">
-            {unit} · {followerSnapshot?.source ?? "Verified Platform API"} ({formatDate(followerSnapshot?.collectedAt ?? new Date().toISOString())})
+            {unit} · {sanitizePublicSourceLabel(account.platform, followerSnapshot?.source)} ({formatDate(followerSnapshot?.collectedAt ?? new Date().toISOString())})
           </div>
         </div>
         <div>
@@ -627,7 +628,8 @@ function AccountSnapshots({ account }: { account: PlatformAccount }) {
                   </strong>
                 </td>
                 <td>
-                  {snapshot.periodLabel ?? "Point-in-time"} · {snapshot.source}
+                  {snapshot.periodLabel ?? "Point-in-time"} ·{" "}
+                  {sanitizePublicSourceLabel(account.platform, snapshot.source)}
                 </td>
               </tr>
             ))}

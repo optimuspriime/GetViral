@@ -1,5 +1,6 @@
 import "server-only";
 import type { Creator, MetricSnapshot, Platform } from "@/lib/model";
+import { sanitizePublicSourceLabel } from "@/lib/public-labels";
 import { searchYouTube } from "@/lib/connectors/youtube";
 import { searchTwitch } from "@/lib/connectors/twitch";
 import { lookupKick } from "@/lib/connectors/kick";
@@ -75,9 +76,9 @@ export async function refreshSavedCreatorsFromConnectors(savedCreators: Creator[
           collectedAt: freshItem.fetchedAt || nowStr,
           windowStart: null,
           windowEnd: null,
-          periodLabel: "Synced Live API",
+          periodLabel: "Synced Live Snapshot",
           sampleSize: null,
-          source: freshItem.source,
+          source: sanitizePublicSourceLabel(account.platform, freshItem.source),
           status: "public",
         });
       }
@@ -94,7 +95,7 @@ export async function refreshSavedCreatorsFromConnectors(savedCreators: Creator[
             ? "Current Live Stream"
             : "Channel lifetime average (total views ÷ videos)",
           sampleSize: null,
-          source: freshItem.source,
+          source: sanitizePublicSourceLabel(account.platform, freshItem.source),
           status: "public",
         });
       }

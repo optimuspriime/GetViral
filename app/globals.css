@@ -741,7 +741,7 @@ h1 { color: #17213a; font-size: 30px; letter-spacing: -1px; }
 .search-field input { color: #24304d; font-size: 13px; height: 44px; }
 .search-field input::placeholder { color: #8e98ac; }
 .discovery-controls { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(240px,1fr) 210px auto; margin: 18px 0 10px; }
-.discovery-search { margin: 0; min-height: 46px; }
+.discovery-search { margin: 0; min-height: 46px; position: relative; }
 .platform-select-wrap { color: #596680; display: grid; font-size: 10px; font-weight: 700; gap: 5px; }
 .platform-select-wrap .filter-select { height: 46px; }
 .mobile-filter-toggle { display: none; }
@@ -1316,7 +1316,8 @@ option { background: #1b1935; color: #f2efff; }
   justify-content: center;
   margin-bottom: 20px;
   min-height: 350px;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 45;
   padding: 20px 24px 22px;
   position: relative;
   text-align: center;
@@ -1867,17 +1868,77 @@ option { background: #f6fbf4; color: #274c31; }
 }
 .toast-item {
   align-items: center;
-  background: #192b20;
-  border: 1px solid rgba(120, 190, 140, 0.25);
+  background: #ffffff;
+  border: 1px solid #d5e2d8;
   border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(10, 25, 18, 0.35);
-  color: #f1f7f2;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  color: #1e293b;
   display: flex;
   font-size: 13px;
   font-weight: 500;
   gap: 10px;
   padding: 12px 18px;
   animation: slideInToast 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Text-Only Search Autocomplete Hints */
+.discovery-controls,
+.hero-search-form {
+  position: relative;
+  z-index: 45;
+}
+.search-field input:focus,
+.search-field input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.search-input-shell {
+  position: relative;
+  z-index: 45;
+}
+.search-hints-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #dce6df;
+  border-radius: 12px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.search-hint-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1f2937;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.search-hint-item:hover,
+.search-hint-item.active {
+  background: #f1f5f2;
+  color: #111827;
+}
+.search-hint-icon {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.search-hint-text strong {
+  color: #111827;
+  font-weight: 700;
 }
 @keyframes slideInToast {
   from { opacity: 0; transform: translateY(16px); }

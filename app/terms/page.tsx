@@ -25,7 +25,7 @@ export default function TermsOfServicePage() {
       <section className="legal-section">
         <h2>2. Connected Platform Terms</h2>
         <p>
-          GetViral integrates with third-party creator platforms solely through official APIs or authorized OAuth tokens. When interacting with YouTube data or features, you also agree to be bound by the{" "}
+          GetViral connects with supported creator platforms strictly within platform guidelines and authorized creator permissions. When interacting with YouTube data or features, you also agree to be bound by the{" "}
           <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">
             YouTube Terms of Service
           </a>{" "}
@@ -41,7 +41,7 @@ export default function TermsOfServicePage() {
         <ul>
           <li>You may use GetViral for legitimate creator discovery, analytics evaluation, and campaign partnership outreach.</li>
           <li>You may not attempt to bypass server-side rate limits, search quotas, or authentication controls, nor scrape, automate bulk abuse, or misuse public contact details for unsolicited spam.</li>
-          <li>Creator metrics and availability depend on third-party platform APIs and are provided with origin timestamps on an &ldquo;as-is&rdquo; basis.</li>
+          <li>Creator metrics and availability depend on connected social platforms and are provided with origin timestamps on an &ldquo;as-is&rdquo; basis.</li>
         </ul>
       </section>
 

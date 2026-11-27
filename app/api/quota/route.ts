@@ -11,14 +11,17 @@ export async function GET(request: Request) {
   const session = await resolveServerSession(request);
   const subscription = await getServerQuota(session);
 
-  const response = NextResponse.json({
-    authenticated: session.authenticated,
-    isGuest: session.isGuest,
-    isAdmin: session.isAdmin,
-    userId: session.userId,
-    email: session.email,
-    subscription,
-  });
+  const response = NextResponse.json(
+    {
+      authenticated: session.authenticated,
+      isGuest: session.isGuest,
+      isAdmin: session.isAdmin,
+      userId: session.userId,
+      email: session.email,
+      subscription,
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 
   attachGuestCookie(response, session);
   attachQuotaCookie(response, session, subscription);
