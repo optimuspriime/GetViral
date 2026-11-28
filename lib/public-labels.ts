@@ -19,6 +19,10 @@ export function sanitizePublicSourceLabel(
   const sourceText = (rawSource || "").trim();
   const normalized = sourceText.toLowerCase();
 
+  if (normalized.includes("creator-authorized") || normalized.includes("channel analytics")) {
+    return "YouTube Creator-Authorized Analytics";
+  }
+
   if (!sourceText || /\b(api|v\d+|endpoint|live|platform|official|workspace|database)\b/i.test(sourceText)) {
     if (platform && PLATFORM_PUBLIC_SOURCES[platform]) {
       return PLATFORM_PUBLIC_SOURCES[platform];

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import {
-  AlertTriangle, ArrowLeft, ArrowUpRight, Bookmark, CircleHelp, Globe2, Mail,
-  Check, CheckCircle2, Copy, Sparkles, ExternalLink, TrendingUp
+  Activity, AlertTriangle, ArrowLeft, ArrowUpRight, Bookmark, CircleHelp, Globe2, Mail,
+  Check, CheckCircle2, Copy, ShieldCheck, Sparkles, ExternalLink, TrendingUp
 } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useProspects } from "@/components/data-provider";
@@ -26,6 +26,19 @@ export default function CreatorProfilePage() {
   const [selectedObsPlatform, setSelectedObsPlatform] = useState<string>("All");
   const [transientCreator, setTransientCreator] = useState<Creator | null>(null);
   const [loadingTransient, setLoadingTransient] = useState(false);
+  const [authorizedAnalytics, setAuthorizedAnalytics] = useState<{
+    creatorId: string;
+    rangeDays: number;
+    retrievedAt: string;
+    summary: {
+      views: number;
+      watchTimeHours: number;
+      averageViewDurationSeconds: number;
+      netSubscribers: number;
+    };
+    trafficSources: Array<{ sourceKey: string; label: string; views: number; sharePercent: number }>;
+    audienceInsights: Creator["audienceInsights"];
+  } | null>(null);
 
   const savedMatch = creators.find((item) => item.id === params.id);
 
@@ -121,6 +134,42 @@ export default function CreatorProfilePage() {
   }, [savedMatch, params.id, searchParams]);
 
   const creator = savedMatch ?? transientCreator;
+
+  useEffect(() => {
+    const activeId = creator?.id;
+    if (!activeId || !activeId.startsWith("yt-")) {
+      setAuthorizedAnalytics(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetch("/api/analytics/youtube?days=28", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.connected || data?.creatorRecord?.id !== activeId || !data?.report) {
+          return;
+        }
+        setAuthorizedAnalytics({
+          creatorId: activeId,
+          rangeDays: data.report.rangeDays,
+          retrievedAt: data.report.retrievedAt,
+          summary: {
+            views: data.report.summary.views,
+            watchTimeHours: data.report.summary.watchTimeHours,
+            averageViewDurationSeconds: data.report.summary.averageViewDurationSeconds,
+            netSubscribers: data.report.summary.netSubscribers,
+          },
+          trafficSources: data.report.trafficSources ?? [],
+          audienceInsights: data.creatorRecord.audienceInsights ?? [],
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [creator?.id]);
+
   if (!creator) {
     return (
       <div className="card">
@@ -451,24 +500,43 @@ export default function CreatorProfilePage() {
               source={creator.creatorCountrySource ?? "Platform Channel Profile"}
             />
 
-            {creator.audienceInsights.length > 0 ? (
-              creator.audienceInsights.map((insight) => (
+            {(() => {
+              const displayedInsights =
+                authorizedAnalytics && authorizedAnalytics.audienceInsights.length > 0
+                  ? authorizedAnalytics.audienceInsights
+                  : creator.audienceInsights;
+              const isYouTubeCreator = creator.accounts.some((a) => a.platform === "YouTube");
+
+              if (displayedInsights.length > 0) {
+                return displayedInsights.map((insight) => (
+                  <Detail
+                    key={`${insight.dimension}:${insight.value}`}
+                    label={`Audience · ${insight.value}${
+                      insight.status === "estimated" ? " (Estimated)" : ""
+                    }`}
+                    value={`${insight.amount ?? 0}${insight.unit} audience share`}
+                    source={`${insight.source} · ${formatDateTime(insight.collectedAt)}`}
+                  />
+                ));
+              }
+
+              return (
                 <Detail
-                  key={`${insight.dimension}:${insight.value}`}
-                  label={`Audience · ${insight.value}${
-                    insight.status === "estimated" ? " (Estimated)" : ""
-                  }`}
-                  value={`${insight.amount ?? 0}${insight.unit} audience share`}
-                  source={`${insight.source} · ${formatDateTime(insight.collectedAt)}`}
+                  label="Audience Geography"
+                  value={
+                    <span className="creator-oauth-prompt">
+                      <span>Unavailable (Creator OAuth required)</span>
+                      {isYouTubeCreator && (
+                        <Link href="/analytics" className="creator-oauth-link">
+                          Own this channel? Connect in Creator Analytics Studio
+                        </Link>
+                      )}
+                    </span>
+                  }
+                  source="Private creator analytics not authorized"
                 />
-              ))
-            ) : (
-              <Detail
-                label="Audience Geography"
-                value="Unavailable (Creator OAuth required)"
-                source="Private creator analytics not authorized"
-              />
-            )}
+              );
+            })()}
 
             <Detail
               label="Content Category"
@@ -481,6 +549,38 @@ export default function CreatorProfilePage() {
               source="Channel Metadata & Script Analysis"
             />
           </dl>
+
+          {authorizedAnalytics && (
+            <div className="creator-authorized-panel">
+              <div className="creator-authorized-head">
+                <span className="live-verified-badge capability-badge-live">
+                  <ShieldCheck size={11} /> Authorized Channel Analytics ({authorizedAnalytics.rangeDays}D)
+                </span>
+                <Link href="/analytics" className="creator-oauth-link">
+                  <Activity size={12} /> Open Full Studio (7D / 90D)
+                </Link>
+              </div>
+              <div className="creator-authorized-kpis tabular-nums">
+                <div>
+                  <span>Views</span>
+                  <strong>
+                    <CompactMetric value={authorizedAnalytics.summary.views} suffix="views" />
+                  </strong>
+                </div>
+                <div>
+                  <span>Watch Time</span>
+                  <strong>{Math.round(authorizedAnalytics.summary.watchTimeHours).toLocaleString()} hrs</strong>
+                </div>
+                <div>
+                  <span>Net Subs</span>
+                  <strong>
+                    {authorizedAnalytics.summary.netSubscribers >= 0 ? "+" : ""}
+                    {authorizedAnalytics.summary.netSubscribers.toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          )}
 
           <hr className="divider" />
 

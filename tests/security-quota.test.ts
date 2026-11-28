@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   createSignedGuestToken,
+  decryptJsonValue,
+  encryptJsonValue,
   hashClientIp,
   isAdminEmail,
   parseCookieValue,
@@ -249,5 +251,33 @@ test("Security, Auth Token, Quota & Sync Integrity Suite", async (t) => {
       "TikTok",
     );
     assert.equal(/\bAPI\b|\bv3\b|\bHelix\b/i.test(sanitizedVersion), false);
+  });
+
+  await t.test("13. AES-256-GCM JSON token encryption roundtrips and rejects tampered ciphertexts", () => {
+    const payload = {
+      ownerKey: "guest:123",
+      accessToken: "ya29.test-access-token",
+      refreshToken: "1//test-refresh-token",
+      channelId: "UCtest",
+    };
+
+    const encrypted = encryptJsonValue(payload);
+    assert.equal(encrypted.includes("ya29.test-access-token"), false);
+    assert.equal(encrypted.includes("1//test-refresh-token"), false);
+
+    const decrypted = decryptJsonValue<typeof payload>(encrypted);
+    assert.deepEqual(decrypted, payload);
+
+    // Tamper encrypted ciphertext
+    const parts = encrypted.split(".");
+    assert.equal(parts.length, 3);
+    const corrupted = `${parts[0]}.${parts[1]}.${parts[2].slice(0, -4)}XXXX`;
+    assert.equal(decryptJsonValue<typeof payload>(corrupted), null);
+
+    // Preserves Creator-Authorized public source label cleanly
+    assert.equal(
+      sanitizePublicSourceLabel("YouTube", "YouTube Creator-Authorized Analytics"),
+      "YouTube Creator-Authorized Analytics",
+    );
   });
 });

@@ -55,6 +55,7 @@ export default function SettingsPage() {
       limitation: string;
       supportsLiveDiscovery?: boolean;
       supportsHandleLookup?: boolean;
+      youtubeAnalyticsAvailable?: boolean;
     }>
   >(() =>
     INTEGRATIONS.map((i) => ({
@@ -433,6 +434,11 @@ create extension if not exists pgcrypto;
                     </div>
 
                     <div className="integration-actions">
+                      {integration.platform === "YouTube" && (
+                        <Link href="/analytics" className="button button-primary button-sm">
+                          Creator Analytics Studio
+                        </Link>
+                      )}
                       {isAdmin && (
                         <button
                           className="button button-secondary button-sm"

@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { INTEGRATIONS, type IntegrationHealthItem } from "@/lib/integrations";
 import { resolveServerSession } from "@/lib/auth/server-session";
+import { resolveGoogleOAuthCredentials } from "@/lib/connectors/youtube-analytics";
 
 export async function GET(request: Request) {
   const session = await resolveServerSession(request);
 
   const hasYouTube = Boolean(process.env.YOUTUBE_DATA_API_KEY && process.env.YOUTUBE_DATA_API_KEY.trim());
+  const hasYouTubeAnalyticsOAuth = Boolean(resolveGoogleOAuthCredentials());
   const hasTwitchId = Boolean(process.env.TWITCH_CLIENT_ID?.trim());
   const hasTwitchSecret = Boolean(process.env.TWITCH_CLIENT_SECRET?.trim());
   const hasTwitch = hasTwitchId && hasTwitchSecret;
@@ -32,7 +34,9 @@ export async function GET(request: Request) {
       mode = hasYouTube ? "active_api" : "unconfigured";
       connectorStatus = hasYouTube ? "Live Search Active" : "Service Pending";
       statusNote = hasYouTube
-        ? "Live channel discovery & public statistics active"
+        ? hasYouTubeAnalyticsOAuth
+          ? "Live channel discovery active · Creator OAuth Analytics ready"
+          : "Live channel discovery & public statistics active"
         : "YouTube live search is currently disabled (activation pending)";
       availableForPublicDiscovery = hasYouTube;
     } else if (item.platform === "Twitch") {
@@ -91,12 +95,14 @@ export async function GET(request: Request) {
     activeCount,
     totalCount: integrations.length,
     isAdmin: session.isAdmin,
+    youtubeAnalyticsAvailable: hasYouTubeAnalyticsOAuth,
     integrations,
   };
 
   if (session.isAdmin) {
     payload.envStatus = {
       youtubeConfigured: hasYouTube,
+      youtubeAnalyticsOAuthConfigured: hasYouTubeAnalyticsOAuth,
       twitchClientConfigured: hasTwitchId,
       twitchSecretConfigured: hasTwitchSecret,
       kickConfigured: hasKick,

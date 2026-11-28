@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ArrowUpRight, Bookmark, Check, ChevronDown, Compass, LayoutDashboard,
+  Activity, ArrowUpRight, Bookmark, Check, ChevronDown, Compass, LayoutDashboard,
   LogOut, LogIn, Menu, Plus, Search, Settings2, Sparkles, X, RefreshCw, Zap
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 const navigation = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, tone: "emerald" },
   { label: "Discover", href: "/discover", icon: Compass, tone: "mint" },
+  { label: "Analytics", href: "/analytics", icon: Activity, tone: "amber" },
   { label: "Saved Creators", href: "/lists", icon: Bookmark, tone: "coral" },
   { label: "Settings", href: "/settings", icon: Settings2, tone: "violet" },
 ];
@@ -537,6 +538,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function pageTitle(pathname: string) {
   if (pathname.startsWith("/discover")) return "Discover";
+  if (pathname.startsWith("/analytics")) return "Creator Analytics";
   if (pathname.startsWith("/creators")) return "Creator Profile";
   if (pathname.startsWith("/lists")) return "Saved Creators";
   if (pathname.startsWith("/settings")) return "Settings";

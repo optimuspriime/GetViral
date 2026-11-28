@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { searchYouTube } from "../lib/connectors/youtube";
+import {
+  buildAuthorizedCreatorRecord,
+  buildGoogleOAuthAuthorizeUrl,
+  fetchOwnedYouTubeChannel,
+  fetchYouTubeAnalyticsReport,
+} from "../lib/connectors/youtube-analytics";
 import { searchTwitch } from "../lib/connectors/twitch";
 import { lookupKick } from "../lib/connectors/kick";
 import { searchTikTok } from "../lib/connectors/tiktok";
@@ -482,6 +488,145 @@ test("Federated Connectors Test Suite", async (t) => {
       globalThis.fetch = prevFetch;
       if (prevKey) process.env.YOUTUBE_DATA_API_KEY = prevKey;
       else delete process.env.YOUTUBE_DATA_API_KEY;
+    }
+  });
+
+  await t.test("16. YouTube Creator OAuth URL builder, Analytics report parser & creator record sync", async () => {
+    const prevFetch = globalThis.fetch;
+
+    const authUrl = buildGoogleOAuthAuthorizeUrl(
+      "https://get-viral.vercel.app/api/oauth/youtube/callback",
+      "signed-state-token",
+      { clientId: "test-client-id.apps.googleusercontent.com", clientSecret: "test-secret" },
+    );
+    const parsedAuth = new URL(authUrl);
+    assert.equal(parsedAuth.origin, "https://accounts.google.com");
+    assert.equal(parsedAuth.searchParams.get("client_id"), "test-client-id.apps.googleusercontent.com");
+    assert.equal(parsedAuth.searchParams.get("redirect_uri"), "https://get-viral.vercel.app/api/oauth/youtube/callback");
+    assert.equal(parsedAuth.searchParams.get("state"), "signed-state-token");
+    assert.ok(parsedAuth.searchParams.get("scope")?.includes("yt-analytics.readonly"));
+
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.includes("www.googleapis.com/youtube/v3/channels")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "UCauthStudio123",
+                snippet: {
+                  title: "Creator Studio Lab",
+                  customUrl: "@creatorstudiolab",
+                  description: "Tech tutorials and analytics workflows",
+                  country: "US",
+                  defaultLanguage: "en",
+                  thumbnails: { high: { url: "https://example.com/avatar.jpg" } },
+                },
+                statistics: {
+                  subscriberCount: "125000",
+                  viewCount: "6200000",
+                  videoCount: "62",
+                },
+                topicDetails: {
+                  topicCategories: ["https://en.wikipedia.org/wiki/Technology"],
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+
+      if (url.includes("youtubeanalytics.googleapis.com/v2/reports")) {
+        const parsed = new URL(url);
+        const dims = parsed.searchParams.get("dimensions") ?? "";
+
+        if (!dims) {
+          return new Response(
+            JSON.stringify({
+              rows: [[450000, 1200000, 160, 18500, 1400, 620, 3400, 320]],
+            }),
+            { status: 200 },
+          );
+        }
+        if (dims === "day") {
+          return new Response(
+            JSON.stringify({
+              rows: [
+                ["2026-11-26", 18000, 48000, 140],
+                ["2026-11-27", 24000, 64000, 195],
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (dims === "country") {
+          return new Response(
+            JSON.stringify({
+              rows: [
+                ["US", 225000, 600000],
+                ["IN", 135000, 360000],
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (dims === "ageGroup,gender") {
+          return new Response(
+            JSON.stringify({
+              rows: [
+                ["age18-24", "male", 34.2],
+                ["age25-34", "female", 26.8],
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (dims === "insightTrafficSourceType") {
+          return new Response(
+            JSON.stringify({
+              rows: [
+                ["SUBSCRIBER", 200000, 520000],
+                ["YT_SEARCH", 150000, 410000],
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+      }
+
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const channel = await fetchOwnedYouTubeChannel("mock-access-token");
+      assert.equal(channel.creatorId, "yt-UCauthStudio123");
+      assert.equal(channel.handle, "@creatorstudiolab");
+      assert.equal(channel.subscribers, 125000);
+      assert.equal(channel.avgViews, 100000);
+
+      const report = await fetchYouTubeAnalyticsReport("mock-access-token", channel, 28);
+      assert.equal(report.rangeDays, 28);
+      assert.equal(report.summary.views, 450000);
+      assert.equal(report.summary.watchTimeHours, 20000);
+      assert.equal(report.summary.netSubscribers, 3080);
+      assert.equal(report.dailySeries.length, 2);
+      assert.equal(report.countries[0]?.countryName, "United States");
+      assert.equal(report.countries[0]?.sharePercent, 62.5);
+      assert.equal(report.countries[1]?.countryName, "India");
+      assert.equal(report.countries[1]?.sharePercent, 37.5);
+      assert.equal(report.demographics[0]?.label, "Male · 18–24");
+      assert.equal(report.trafficSources[0]?.label, "Home & Subscriptions Feed");
+      assert.equal(report.trafficSources[1]?.label, "YouTube Search");
+
+      const creator = buildAuthorizedCreatorRecord(report);
+      assert.equal(creator.id, "yt-UCauthStudio123");
+      assert.equal(creator.avatar, "https://example.com/avatar.jpg");
+      assert.ok(creator.audienceInsights.every((i) => i.status === "creator_authorized"));
+      assert.ok(creator.audienceInsights.some((i) => i.dimension === "country" && i.value === "United States"));
+    } finally {
+      globalThis.fetch = prevFetch;
     }
   });
 

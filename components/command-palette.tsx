@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Search, X, Compass, LayoutDashboard, Bookmark, Settings2, ArrowRight } from "lucide-react";
+import { Activity, Search, X, Compass, LayoutDashboard, Bookmark, Settings2, ArrowRight } from "lucide-react";
 import { useProspects } from "@/components/data-provider";
 import { platformColors } from "@/lib/platforms";
 import { currentFollowers } from "@/lib/metrics";
@@ -43,6 +43,7 @@ export function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: 
   const quickNav = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
     { label: "Discover Creators", href: "/discover", icon: Compass },
+    { label: "Creator Analytics Studio", href: "/analytics", icon: Activity },
     { label: "Saved Creators", href: "/lists", icon: Bookmark },
     { label: "Account & Settings", href: "/settings", icon: Settings2 },
   ];
