@@ -4,11 +4,12 @@ import Link from "next/link";
 import {
   ArrowUpRight, Check, CircleHelp, Database, KeyRound,
   RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle,
-  Zap, User, Copy, Lock
+  Zap, User, Copy, Lock, Palette
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Platform } from "@/lib/model";
 import { INTEGRATIONS } from "@/lib/integrations";
+import { SIGNAL_THEMES } from "@/lib/appearance";
 import { getSupabaseBrowserClient, getSupabaseConfig, saveSupabaseConfig } from "@/lib/supabase/browser";
 import { useProspects } from "@/components/data-provider";
 
@@ -24,6 +25,10 @@ export default function SettingsPage() {
     setUserRole,
     setPricingModalOpen,
     setCreatorModalOpen,
+    signalTheme,
+    setSignalTheme,
+    reduceMotion,
+    setReduceMotion,
   } = useProspects();
 
   const [testingPlatform, setTestingPlatform] = useState<string | null>(null);
@@ -530,10 +535,84 @@ create extension if not exists pgcrypto;
           </div>
         </section>
 
-        {/* Right Column: Subscription Quota, Account Role, Authentication & Legal */}
+        {/* Right Column: Interface Appearance, Quota, Role, Authentication & Legal */}
         <section>
+          {/* Interface Appearance Card */}
+          <div className="card appearance-card">
+            <div className="card-head">
+              <div>
+                <h2 className="card-title">
+                  <Palette size={14} className="inline-icon" style={{ marginRight: 6, color: "var(--accent-primary, #16834B)" }} />
+                  Interface Appearance
+                </h2>
+                <p className="card-caption">Personalize studio colors and animation comfort</p>
+              </div>
+              <span className="coverage-tag">Browser Preference</span>
+            </div>
+
+            <div className="appearance-section">
+              <div className="appearance-group">
+                <div className="appearance-label-block">
+                  <strong>Color theme</strong>
+                  <span>Choose your dashboard signal color</span>
+                </div>
+
+                <div className="theme-swatch-grid" role="group" aria-label="Choose your dashboard signal color">
+                  {SIGNAL_THEMES.map((themeOption) => {
+                    const active = signalTheme === themeOption.id;
+                    return (
+                      <button
+                        key={themeOption.id}
+                        type="button"
+                        className={`theme-swatch-btn ${active ? "active" : ""}`}
+                        aria-pressed={active}
+                        title={`${themeOption.label} — ${themeOption.mood}`}
+                        onClick={() => setSignalTheme(themeOption.id)}
+                      >
+                        <span
+                          className="theme-swatch-orb"
+                          style={{
+                            background: `linear-gradient(135deg, ${themeOption.primary} 0%, ${themeOption.highlight} 100%)`,
+                          }}
+                          aria-hidden="true"
+                        >
+                          {active && <Check size={12} strokeWidth={3} />}
+                        </span>
+                        <span className="theme-swatch-text">
+                          <strong>{themeOption.label}</strong>
+                          <small>{themeOption.mood}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <hr className="divider" />
+
+              <div className="motion-toggle-row">
+                <div className="appearance-label-block">
+                  <strong id="reduce-motion-label">Reduce motion</strong>
+                  <span id="reduce-motion-desc">Pause ambient and entrance animations.</span>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={reduceMotion}
+                  aria-labelledby="reduce-motion-label"
+                  aria-describedby="reduce-motion-desc"
+                  className={`motion-switch ${reduceMotion ? "active" : ""}`}
+                  onClick={() => setReduceMotion(!reduceMotion)}
+                >
+                  <span className="motion-switch-thumb" />
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Subscription & Search Quota Card */}
-          <div className="card settings-sub-card">
+          <div className="card settings-sub-card section-spacer">
             <div className="card-head">
               <div>
                 <h2 className="card-title">

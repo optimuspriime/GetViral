@@ -13,6 +13,14 @@ import {
   loadUserRole,
   saveUserRole,
 } from "@/lib/subscription";
+import {
+  type SignalThemeId,
+  DEFAULT_APPEARANCE,
+  SIGNAL_THEMES,
+  applyAppearanceToDocument,
+  loadAppearancePreferences,
+  saveAppearancePreferences,
+} from "@/lib/appearance";
 
 export interface Workspace {
   id: string;
@@ -75,6 +83,10 @@ type Store = {
   setPricingModalOpen: (open: boolean) => void;
   creatorModalOpen: boolean;
   setCreatorModalOpen: (open: boolean) => void;
+  signalTheme: SignalThemeId;
+  setSignalTheme: (theme: SignalThemeId) => void;
+  reduceMotion: boolean;
+  setReduceMotion: (reduce: boolean) => void;
 };
 
 const STORAGE_KEY = "gv-saved-lists-v6";
@@ -154,6 +166,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRoleState] = useState<UserRole>("viewer");
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);
+  const [signalTheme, setSignalThemeState] = useState<SignalThemeId>(DEFAULT_APPEARANCE.signalTheme);
+  const [reduceMotion, setReduceMotionState] = useState<boolean>(DEFAULT_APPEARANCE.reduceMotion);
+  const [appearanceLoaded, setAppearanceLoaded] = useState(false);
+
+  useEffect(() => {
+    const loaded = loadAppearancePreferences();
+    setSignalThemeState(loaded.signalTheme);
+    setReduceMotionState(loaded.reduceMotion);
+    applyAppearanceToDocument(loaded);
+    setAppearanceLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!appearanceLoaded) return;
+    const prefs = { signalTheme, reduceMotion };
+    saveAppearancePreferences(prefs);
+    applyAppearanceToDocument(prefs);
+  }, [signalTheme, reduceMotion, appearanceLoaded]);
 
   const listSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creatorsRef = useRef<Creator[]>([]);
@@ -189,6 +219,28 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }, action ? 5500 : 3200);
     },
     [],
+  );
+
+  const setSignalTheme = useCallback(
+    (theme: SignalThemeId) => {
+      setSignalThemeState(theme);
+      const option = SIGNAL_THEMES.find((item) => item.id === theme);
+      showToast(`Signal theme set to ${option?.label ?? theme}`, "success");
+    },
+    [showToast],
+  );
+
+  const setReduceMotion = useCallback(
+    (reduce: boolean) => {
+      setReduceMotionState(reduce);
+      showToast(
+        reduce
+          ? "Reduced motion enabled — ambient animations paused"
+          : "Reduced motion disabled — animations resumed",
+        "info",
+      );
+    },
+    [showToast],
   );
 
   // Resolve verified identity from Supabase Auth
@@ -854,6 +906,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPricingModalOpen,
       creatorModalOpen,
       setCreatorModalOpen,
+      signalTheme,
+      setSignalTheme,
+      reduceMotion,
+      setReduceMotion,
     }),
     [
       creators,
@@ -892,6 +948,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       deductSearch,
       pricingModalOpen,
       creatorModalOpen,
+      signalTheme,
+      setSignalTheme,
+      reduceMotion,
+      setReduceMotion,
     ],
   );
 

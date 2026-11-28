@@ -38,10 +38,17 @@ function usePrefersReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(false);
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReducedMotion(preference.matches);
+    const updatePreference = () => {
+      const appOverride = document.documentElement.dataset.reduceMotion === "true";
+      setReducedMotion(preference.matches || appOverride);
+    };
     updatePreference();
     preference.addEventListener("change", updatePreference);
-    return () => preference.removeEventListener("change", updatePreference);
+    window.addEventListener("gv-appearance-change", updatePreference);
+    return () => {
+      preference.removeEventListener("change", updatePreference);
+      window.removeEventListener("gv-appearance-change", updatePreference);
+    };
   }, []);
   return reducedMotion;
 }

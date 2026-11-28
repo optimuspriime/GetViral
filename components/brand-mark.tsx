@@ -11,14 +11,14 @@ export function BrandMark({ className = "" }: { className?: string }) {
       <svg viewBox="0 0 44 44" width="24" height="24" fill="none">
         <defs>
           <linearGradient id={bgId} x1="4" y1="4" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#1E9E59" />
-            <stop offset="55%" stopColor="#16834B" />
-            <stop offset="100%" stopColor="#0E5C34" />
+            <stop offset="0%" stopColor="#1E9E59" style={{ stopColor: "var(--accent-soft, #1E9E59)" }} />
+            <stop offset="55%" stopColor="#16834B" style={{ stopColor: "var(--accent-primary, #16834B)" }} />
+            <stop offset="100%" stopColor="#0E5C34" style={{ stopColor: "var(--accent-dark, #0E5C34)" }} />
           </linearGradient>
           <linearGradient id={pulseId} x1="12" y1="30" x2="34" y2="11" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#86EFAC" />
-            <stop offset="52%" stopColor="#B9F36A" />
-            <stop offset="100%" stopColor="#E4FC9C" />
+            <stop offset="0%" stopColor="#86EFAC" style={{ stopColor: "var(--accent-pulse-start, #86EFAC)" }} />
+            <stop offset="52%" stopColor="#B9F36A" style={{ stopColor: "var(--accent-highlight, #B9F36A)" }} />
+            <stop offset="100%" stopColor="#E4FC9C" style={{ stopColor: "var(--accent-pulse-end, #E4FC9C)" }} />
           </linearGradient>
           <linearGradient id={sheenId} x1="6" y1="4" x2="26" y2="22" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.34" />
