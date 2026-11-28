@@ -4,12 +4,13 @@ import Link from "next/link";
 import {
   ArrowUpRight, Check, CircleHelp, Database, KeyRound,
   RefreshCw, ShieldCheck, Sparkles, Terminal, CheckCircle2, AlertCircle,
-  Zap, User, Copy, Lock, Palette
+  Zap, User, Copy, Lock, Palette, Sun, Moon
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Platform } from "@/lib/model";
 import { INTEGRATIONS } from "@/lib/integrations";
 import { SIGNAL_THEMES } from "@/lib/appearance";
+import { ColorWheelPicker } from "@/components/color-wheel-picker";
 import { getSupabaseBrowserClient, getSupabaseConfig, saveSupabaseConfig } from "@/lib/supabase/browser";
 import { useProspects } from "@/components/data-provider";
 
@@ -25,11 +26,17 @@ export default function SettingsPage() {
     setUserRole,
     setPricingModalOpen,
     setCreatorModalOpen,
+    surfaceMode,
+    setSurfaceMode,
     signalTheme,
     setSignalTheme,
+    customColor,
+    setCustomColor,
     reduceMotion,
     setReduceMotion,
   } = useProspects();
+
+  const [colorWheelOpen, setColorWheelOpen] = useState(false);
 
   const [testingPlatform, setTestingPlatform] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, { status: "success" | "error"; message: string }>>({});
@@ -393,26 +400,13 @@ create extension if not exists pgcrypto;
                           <span className="skeleton-pill" />
                         ) : (
                           <span
-                            className="live-verified-badge"
-                            style={{
-                              backgroundColor: integration.connected
-                                ? "rgba(34, 197, 94, 0.12)"
+                            className={`live-verified-badge ${
+                              integration.connected
+                                ? "capability-badge-live"
                                 : integration.mode === "requires_oauth"
-                                ? "rgba(100, 116, 139, 0.12)"
-                                : "rgba(234, 179, 8, 0.12)",
-                              color: integration.connected
-                                ? "#15803d"
-                                : integration.mode === "requires_oauth"
-                                ? "#475569"
-                                : "#b45309",
-                              border: `1px solid ${
-                                integration.connected
-                                  ? "rgba(34, 197, 94, 0.3)"
-                                  : integration.mode === "requires_oauth"
-                                  ? "rgba(100, 116, 139, 0.3)"
-                                  : "rgba(234, 179, 8, 0.3)"
-                              }`,
-                            }}
+                                ? "capability-badge-oauth"
+                                : "capability-badge-pending"
+                            }`}
                           >
                             {integration.connected ? <Check size={11} /> : <AlertCircle size={11} />}{" "}
                             {integration.connectorStatus}
@@ -551,6 +545,36 @@ create extension if not exists pgcrypto;
             </div>
 
             <div className="appearance-section">
+              <div className="motion-toggle-row motion-toggle-row-wrap">
+                <div className="appearance-label-block">
+                  <strong>Theme mode</strong>
+                  <span>Whole-site Light or Dark appearance</span>
+                </div>
+
+                <div className="surface-mode-segmented" role="group" aria-label="Choose light or dark mode">
+                  <button
+                    type="button"
+                    className={`surface-mode-btn ${surfaceMode === "light" ? "active" : ""}`}
+                    aria-pressed={surfaceMode === "light"}
+                    onClick={() => setSurfaceMode("light")}
+                  >
+                    <Sun size={13} />
+                    <span>Light</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`surface-mode-btn ${surfaceMode === "dark" ? "active" : ""}`}
+                    aria-pressed={surfaceMode === "dark"}
+                    onClick={() => setSurfaceMode("dark")}
+                  >
+                    <Moon size={13} />
+                    <span>Dark</span>
+                  </button>
+                </div>
+              </div>
+
+              <hr className="divider" />
+
               <div className="appearance-group">
                 <div className="appearance-label-block">
                   <strong>Color theme</strong>
@@ -567,7 +591,10 @@ create extension if not exists pgcrypto;
                         className={`theme-swatch-btn ${active ? "active" : ""}`}
                         aria-pressed={active}
                         title={`${themeOption.label} — ${themeOption.mood}`}
-                        onClick={() => setSignalTheme(themeOption.id)}
+                        onClick={() => {
+                          setSignalTheme(themeOption.id);
+                          setColorWheelOpen(false);
+                        }}
                       >
                         <span
                           className="theme-swatch-orb"
@@ -585,7 +612,45 @@ create extension if not exists pgcrypto;
                       </button>
                     );
                   })}
+
+                  <button
+                    type="button"
+                    className={`theme-swatch-btn ${signalTheme === "custom" ? "active" : ""}`}
+                    aria-pressed={signalTheme === "custom"}
+                    aria-expanded={colorWheelOpen}
+                    title="Pick any color from the interactive color wheel"
+                    onClick={() => {
+                      if (signalTheme !== "custom") {
+                        setSignalTheme("custom");
+                      }
+                      setColorWheelOpen((prev) => !prev);
+                    }}
+                  >
+                    <span
+                      className="theme-swatch-orb theme-swatch-orb-wheel"
+                      style={
+                        signalTheme === "custom"
+                          ? { boxShadow: `0 0 0 2px #FFFFFF, 0 0 0 4px ${customColor}` }
+                          : undefined
+                      }
+                      aria-hidden="true"
+                    >
+                      {signalTheme === "custom" && <Check size={12} strokeWidth={3} />}
+                    </span>
+                    <span className="theme-swatch-text">
+                      <strong>Pick your own</strong>
+                      <small>{signalTheme === "custom" ? customColor : "Open color wheel"}</small>
+                    </span>
+                  </button>
                 </div>
+
+                {colorWheelOpen && (
+                  <ColorWheelPicker
+                    value={customColor}
+                    onChange={setCustomColor}
+                    onClose={() => setColorWheelOpen(false)}
+                  />
+                )}
               </div>
 
               <hr className="divider" />

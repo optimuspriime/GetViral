@@ -15,10 +15,12 @@ import {
 } from "@/lib/subscription";
 import {
   type SignalThemeId,
+  type SurfaceMode,
   DEFAULT_APPEARANCE,
   SIGNAL_THEMES,
   applyAppearanceToDocument,
   loadAppearancePreferences,
+  normalizeHexColor,
   saveAppearancePreferences,
 } from "@/lib/appearance";
 
@@ -83,8 +85,12 @@ type Store = {
   setPricingModalOpen: (open: boolean) => void;
   creatorModalOpen: boolean;
   setCreatorModalOpen: (open: boolean) => void;
+  surfaceMode: SurfaceMode;
+  setSurfaceMode: (mode: SurfaceMode) => void;
   signalTheme: SignalThemeId;
   setSignalTheme: (theme: SignalThemeId) => void;
+  customColor: string;
+  setCustomColor: (hex: string) => void;
   reduceMotion: boolean;
   setReduceMotion: (reduce: boolean) => void;
 };
@@ -166,13 +172,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRoleState] = useState<UserRole>("viewer");
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [creatorModalOpen, setCreatorModalOpen] = useState(false);
+  const [surfaceMode, setSurfaceModeState] = useState<SurfaceMode>(DEFAULT_APPEARANCE.surfaceMode);
   const [signalTheme, setSignalThemeState] = useState<SignalThemeId>(DEFAULT_APPEARANCE.signalTheme);
+  const [customColor, setCustomColorState] = useState<string>(DEFAULT_APPEARANCE.customColor);
   const [reduceMotion, setReduceMotionState] = useState<boolean>(DEFAULT_APPEARANCE.reduceMotion);
   const [appearanceLoaded, setAppearanceLoaded] = useState(false);
 
   useEffect(() => {
     const loaded = loadAppearancePreferences();
+    setSurfaceModeState(loaded.surfaceMode);
     setSignalThemeState(loaded.signalTheme);
+    setCustomColorState(loaded.customColor);
     setReduceMotionState(loaded.reduceMotion);
     applyAppearanceToDocument(loaded);
     setAppearanceLoaded(true);
@@ -180,10 +190,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!appearanceLoaded) return;
-    const prefs = { signalTheme, reduceMotion };
+    const prefs = { surfaceMode, signalTheme, customColor, reduceMotion };
     saveAppearancePreferences(prefs);
     applyAppearanceToDocument(prefs);
-  }, [signalTheme, reduceMotion, appearanceLoaded]);
+  }, [surfaceMode, signalTheme, customColor, reduceMotion, appearanceLoaded]);
 
   const listSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creatorsRef = useRef<Creator[]>([]);
@@ -221,14 +231,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const setSignalTheme = useCallback(
-    (theme: SignalThemeId) => {
-      setSignalThemeState(theme);
-      const option = SIGNAL_THEMES.find((item) => item.id === theme);
-      showToast(`Signal theme set to ${option?.label ?? theme}`, "success");
+  const setSurfaceMode = useCallback(
+    (mode: SurfaceMode) => {
+      setSurfaceModeState(mode);
+      showToast(`Switched to ${mode === "dark" ? "Dark" : "Light"} mode`, "info");
     },
     [showToast],
   );
+
+  const setSignalTheme = useCallback(
+    (theme: SignalThemeId) => {
+      setSignalThemeState(theme);
+      if (theme === "custom") {
+        showToast("Custom color theme activated", "success");
+      } else {
+        const option = SIGNAL_THEMES.find((item) => item.id === theme);
+        showToast(`Signal theme set to ${option?.label ?? theme}`, "success");
+      }
+    },
+    [showToast],
+  );
+
+  const setCustomColor = useCallback((hex: string) => {
+    const clean = normalizeHexColor(hex);
+    if (!clean) return;
+    setCustomColorState(clean);
+    setSignalThemeState("custom");
+  }, []);
 
   const setReduceMotion = useCallback(
     (reduce: boolean) => {
@@ -906,8 +935,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPricingModalOpen,
       creatorModalOpen,
       setCreatorModalOpen,
+      surfaceMode,
+      setSurfaceMode,
       signalTheme,
       setSignalTheme,
+      customColor,
+      setCustomColor,
       reduceMotion,
       setReduceMotion,
     }),
@@ -948,8 +981,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       deductSearch,
       pricingModalOpen,
       creatorModalOpen,
+      surfaceMode,
+      setSurfaceMode,
       signalTheme,
       setSignalTheme,
+      customColor,
+      setCustomColor,
       reduceMotion,
       setReduceMotion,
     ],

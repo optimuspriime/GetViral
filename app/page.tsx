@@ -414,50 +414,31 @@ export default function DashboardPage() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
           {integrationsHealth.map((integ) => {
-            const badgeBg = integ.connected
-              ? "rgba(34, 197, 94, 0.12)"
+            const badgeClass = integ.connected
+              ? "capability-badge-live"
               : integ.mode === "unconfigured"
-              ? "rgba(234, 179, 8, 0.14)"
-              : "rgba(100, 116, 139, 0.12)";
-            const badgeColor = integ.connected
-              ? "#15803d"
-              : integ.mode === "unconfigured"
-              ? "#92400e"
-              : "#475569";
+              ? "capability-badge-pending"
+              : "capability-badge-oauth";
 
             return (
               <div
                 key={integ.platform}
-                style={{
-                  border: "1px solid rgba(80, 140, 80, 0.15)",
-                  borderRadius: 12,
-                  padding: "14px 16px",
-                  background: "rgba(255, 255, 255, 0.5)",
-                }}
+                className="capability-card-item"
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                  <strong style={{ fontSize: 14, color: "#1d472b" }}>{integ.platform}</strong>
+                  <strong style={{ fontSize: 14, color: "var(--ink)" }}>{integ.platform}</strong>
                   {!connectorsLoaded ? (
                     <span className="skeleton-pill" aria-label="Loading connector status" />
                   ) : (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 600,
-                        padding: "2px 7px",
-                        borderRadius: 6,
-                        background: badgeBg,
-                        color: badgeColor,
-                      }}
-                    >
+                    <span className={`capability-badge ${badgeClass}`}>
                       {integ.connectorStatus}
                     </span>
                   )}
                 </div>
-                <p style={{ fontSize: 11, color: "#547359", margin: "0 0 10px", lineHeight: 1.4 }}>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.4 }}>
                   {integ.statusNote}
                 </p>
-                <div style={{ fontSize: 11, color: "#416453" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>
                   {!connectorsLoaded ? (
                     <span>Refreshing platform status…</span>
                   ) : integ.connected && integ.supportsLiveDiscovery ? (

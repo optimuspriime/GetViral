@@ -1545,11 +1545,11 @@ export default function DiscoverPage() {
             </FilterGroup>
 
             {/* Audience Geography Info Box */}
-            <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.4)", borderRadius: 8, border: "1px solid rgba(80,140,80,0.12)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "#285d38", marginBottom: 4 }}>
+            <div className="audience-info-box">
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "var(--accent-dark)", marginBottom: 4 }}>
                 <Info size={12} /> Audience Demographics
               </div>
-              <p style={{ fontSize: 10, color: "#557966", margin: 0, lineHeight: 1.4 }}>
+              <p style={{ fontSize: 10, color: "var(--muted)", margin: 0, lineHeight: 1.4 }}>
                 Audience geography requires creator-authorized OAuth tokens; public channel directories do not include private audience country metrics.
               </p>
             </div>
@@ -1656,11 +1656,11 @@ export default function DiscoverPage() {
           <div className="card results-card">
             {isSearching ? (
               <div style={{ textAlign: "center", padding: "64px 20px" }}>
-                <RefreshCw size={28} className="spin-icon" style={{ color: "#22c55e", margin: "0 auto 16px" }} />
-                <h3 style={{ fontSize: 16, color: "#1d472b", marginBottom: 6 }}>
+                <RefreshCw size={28} className="spin-icon" style={{ color: "var(--accent-primary)", margin: "0 auto 16px" }} />
+                <h3 style={{ fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>
                   {filters.query.trim() ? "Searching live creators…" : "Loading creator profiles…"}
                 </h3>
-                <p style={{ color: "#547359", fontSize: 13, margin: 0 }}>
+                <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>
                   Checking live creator directories and reconciling duplicate channel entries.
                 </p>
               </div>

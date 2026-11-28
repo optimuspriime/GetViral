@@ -34,23 +34,41 @@ const categoryPalette = [
   "#84CC16", // Highlight Lime
 ];
 
-function usePrefersReducedMotion() {
+function useAppearanceFlags() {
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => {
-      const appOverride = document.documentElement.dataset.reduceMotion === "true";
-      setReducedMotion(preference.matches || appOverride);
+    const update = () => {
+      const ds = document.documentElement.dataset;
+      setReducedMotion(preference.matches || ds.reduceMotion === "true");
+      setIsDark(ds.surfaceMode === "dark");
     };
-    updatePreference();
-    preference.addEventListener("change", updatePreference);
-    window.addEventListener("gv-appearance-change", updatePreference);
+    update();
+    preference.addEventListener("change", update);
+    window.addEventListener("gv-appearance-change", update);
     return () => {
-      preference.removeEventListener("change", updatePreference);
-      window.removeEventListener("gv-appearance-change", updatePreference);
+      preference.removeEventListener("change", update);
+      window.removeEventListener("gv-appearance-change", update);
     };
   }, []);
-  return reducedMotion;
+
+  const chartAxis = isDark
+    ? { fill: "#A7C7B5", fontSize: 10.5, fontWeight: 500 }
+    : axis;
+  const chartTooltipStyle = isDark
+    ? {
+        ...tooltipStyle,
+        backgroundColor: "rgba(14, 27, 20, 0.96)",
+        border: "1px solid var(--accent-border, rgba(110, 231, 183, 0.28))",
+        boxShadow: "0 16px 36px rgba(0, 0, 0, 0.45)",
+        color: "#EAF5EE",
+      }
+    : tooltipStyle;
+  const gridStroke = isDark ? "rgba(180, 230, 200, 0.12)" : "rgba(55, 112, 68, 0.14)";
+
+  return { reducedMotion, isDark, chartAxis, chartTooltipStyle, gridStroke };
 }
 
 function useMounted() {
@@ -69,7 +87,7 @@ export function PlatformChart({
   onSelect: (name: string) => void;
 }) {
   const mounted = useMounted();
-  const reducedMotion = usePrefersReducedMotion();
+  const { reducedMotion, isDark, chartTooltipStyle } = useAppearanceFlags();
   if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
@@ -105,14 +123,14 @@ export function PlatformChart({
                 <Cell
                   key={entry.name}
                   fill={color}
-                  stroke="#ffffff"
+                  stroke={isDark ? "#0d1b14" : "#ffffff"}
                   strokeWidth={2.5}
                 />
               );
             })}
           </Pie>
           <Tooltip
-            contentStyle={tooltipStyle}
+            contentStyle={chartTooltipStyle}
             formatter={(value, name) => {
               const count = Number(value);
               const pct = Math.round((count / (total || 1)) * 100);
@@ -139,7 +157,7 @@ export function TrendChart({
   series?: string[];
 }) {
   const mounted = useMounted();
-  const reducedMotion = usePrefersReducedMotion();
+  const { reducedMotion, isDark, chartAxis, chartTooltipStyle, gridStroke } = useAppearanceFlags();
   const [activePlatform, setActivePlatform] = useState<string>("All");
 
   const activeSeries = useMemo(() => {
@@ -213,10 +231,10 @@ export function TrendChart({
       <div className="chart-wrap">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 12, right: 18, left: 10, bottom: 6 }}>
-            <CartesianGrid stroke="rgba(55,112,68,.12)" strokeDasharray="3 4" vertical={false} />
-            <XAxis dataKey="date" tick={axis} axisLine={false} tickLine={false} dy={8} />
+            <CartesianGrid stroke={gridStroke} strokeDasharray="3 4" vertical={false} />
+            <XAxis dataKey="date" tick={chartAxis} axisLine={false} tickLine={false} dy={8} />
             <YAxis
-              tick={axis}
+              tick={chartAxis}
               axisLine={false}
               tickLine={false}
               width={66}
@@ -228,13 +246,13 @@ export function TrendChart({
                 angle: -90,
                 position: "insideLeft",
                 offset: 12,
-                fill: "#54705B",
+                fill: isDark ? "#A7C7B5" : "#416453",
                 fontSize: 9,
               }}
             />
             <Tooltip
-              contentStyle={tooltipStyle}
-              cursor={{ stroke: "#16834B", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+              contentStyle={chartTooltipStyle}
+              cursor={{ stroke: "var(--accent-primary, #16834B)", strokeWidth: 1.5, strokeDasharray: "4 4" }}
               formatter={(value, name) => [
                 `${formatExactNumber(Number(value))} ${label.toLowerCase()}`,
                 String(name),
@@ -242,7 +260,7 @@ export function TrendChart({
               labelFormatter={(dateStr) => `Audit Date: ${dateStr}`}
             />
             {series && activePlatform === "All" && (
-              <Legend wrapperStyle={{ fontSize: 10.5, paddingTop: 6, color: "#416453" }} />
+              <Legend wrapperStyle={{ fontSize: 10.5, paddingTop: 6, color: isDark ? "#A7C7B5" : "#416453" }} />
             )}
             {activeSeries.map((key) => {
               const stroke = series
@@ -257,7 +275,7 @@ export function TrendChart({
                   stroke={stroke}
                   strokeWidth={2.75}
                   dot={false}
-                  activeDot={{ r: 5, stroke: "#FFFFFF", strokeWidth: 2, fill: stroke }}
+                  activeDot={{ r: 5, stroke: isDark ? "#0d1b14" : "#FFFFFF", strokeWidth: 2, fill: stroke }}
                   connectNulls={false}
                   isAnimationActive={!reducedMotion}
                   animationDuration={700}
@@ -271,7 +289,7 @@ export function TrendChart({
 
       <div className="chart-help-caption">
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Info size={13} style={{ color: "#16834B", flexShrink: 0 }} />
+          <Info size={13} style={{ color: "var(--accent-primary, #16834B)", flexShrink: 0 }} />
           <span>
             <strong>Audience Trajectory:</strong> Curve connects stored observation audits.
             {activePlatform === "All"
@@ -300,7 +318,7 @@ export function CategoryChart({
   itemLabel?: string;
 }) {
   const mounted = useMounted();
-  const reducedMotion = usePrefersReducedMotion();
+  const { reducedMotion, chartAxis, chartTooltipStyle, gridStroke } = useAppearanceFlags();
   if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
@@ -321,18 +339,18 @@ export function CategoryChart({
             if (item?.name) onSelect(item.name);
           }}
         >
-          <CartesianGrid stroke="rgba(55,112,68,.14)" strokeDasharray="3 4" horizontal={false} />
-          <XAxis type="number" tick={axis} axisLine={false} tickLine={false} allowDecimals={false} />
+          <CartesianGrid stroke={gridStroke} strokeDasharray="3 4" horizontal={false} />
+          <XAxis type="number" tick={chartAxis} axisLine={false} tickLine={false} allowDecimals={false} />
           <YAxis
             type="category"
             dataKey="name"
-            tick={axis}
+            tick={chartAxis}
             axisLine={false}
             tickLine={false}
             width={86}
           />
           <Tooltip
-            contentStyle={tooltipStyle}
+            contentStyle={chartTooltipStyle}
             formatter={(value) => [`${value} ${itemLabel}`, "Profiles"]}
           />
           <Bar
@@ -369,7 +387,7 @@ export function HorizontalValueChart({
   onSelect: (name: string) => void;
 }) {
   const mounted = useMounted();
-  const reducedMotion = usePrefersReducedMotion();
+  const { reducedMotion, chartAxis, chartTooltipStyle, gridStroke } = useAppearanceFlags();
   if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
@@ -390,18 +408,18 @@ export function HorizontalValueChart({
             if (item?.name) onSelect(item.name);
           }}
         >
-          <CartesianGrid stroke="rgba(55,112,68,.14)" strokeDasharray="3 4" horizontal={false} />
-          <XAxis type="number" tick={axis} axisLine={false} tickLine={false} />
+          <CartesianGrid stroke={gridStroke} strokeDasharray="3 4" horizontal={false} />
+          <XAxis type="number" tick={chartAxis} axisLine={false} tickLine={false} />
           <YAxis
             type="category"
             dataKey="name"
-            tick={axis}
+            tick={chartAxis}
             axisLine={false}
             tickLine={false}
             width={90}
           />
           <Tooltip
-            contentStyle={tooltipStyle}
+            contentStyle={chartTooltipStyle}
             formatter={(value) => [
               `${Number(value).toLocaleString()}${suffix}`,
               "Average sourced share",
@@ -440,7 +458,7 @@ export function ComparisonBarChart({
   onSelect: (platform: Platform) => void;
 }) {
   const mounted = useMounted();
-  const reducedMotion = usePrefersReducedMotion();
+  const { reducedMotion, chartAxis, chartTooltipStyle, gridStroke } = useAppearanceFlags();
   if (!mounted || !data.length)
     return (
       <div className="chart-wrap compact">
@@ -461,10 +479,10 @@ export function ComparisonBarChart({
             if (item?.platform) onSelect(item.platform);
           }}
         >
-          <CartesianGrid stroke="rgba(55,112,68,.14)" strokeDasharray="3 4" horizontal={false} />
+          <CartesianGrid stroke={gridStroke} strokeDasharray="3 4" horizontal={false} />
           <XAxis
             type="number"
-            tick={axis}
+            tick={chartAxis}
             axisLine={false}
             tickLine={false}
             tickFormatter={shortNumber}
@@ -472,13 +490,13 @@ export function ComparisonBarChart({
           <YAxis
             type="category"
             dataKey="name"
-            tick={axis}
+            tick={chartAxis}
             axisLine={false}
             tickLine={false}
             width={92}
           />
           <Tooltip
-            contentStyle={tooltipStyle}
+            contentStyle={chartTooltipStyle}
             formatter={(value) => [formatExactNumber(Number(value)), valueLabel]}
           />
           <Bar

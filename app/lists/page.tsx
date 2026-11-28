@@ -183,29 +183,16 @@ export default function ListsPage() {
       {isGuest && (
         <div
           className="guest-readonly-banner"
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 12,
-            padding: "13px 16px",
-            background: "#fffbeb",
-            border: "1px solid #fef3c7",
-            borderRadius: 10,
-            marginBottom: 16,
-            color: "#92400e",
-            fontSize: "12px",
-            lineHeight: 1.5,
-          }}
           role="status"
         >
-          <Lock size={15} style={{ flexShrink: 0, marginTop: 2, color: "#92400e" }} />
+          <Lock size={15} className="guest-readonly-icon" />
           <div>
-            <strong style={{ display: "block", color: "#78350f", marginBottom: 2 }}>
+            <strong className="guest-readonly-title">
               Guest Sandbox Preview (Read-Only)
             </strong>
             <span>
               You are exploring in guest sandbox mode. Creating, renaming, deleting, and modifying shortlist CRM records requires signing in with a workspace account. Please{" "}
-              <Link href="/auth" style={{ color: "#b45309", fontWeight: 700, textDecoration: "underline" }}>
+              <Link href="/auth" className="guest-readonly-link">
                 Sign In
               </Link>{" "}
               to unlock full CRM shortlists.
