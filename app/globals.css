@@ -1684,7 +1684,8 @@ option { background: #f6fbf4; color: #274c31; }
 .hero-copy .eyebrow { color: #4b8652; }
 .hero-copy h1 { color: #173b27; }
 .hero-copy .page-subtitle { color: #54745a; }
-.hero-copy .button svg { color: #dff3df; }
+.hero-copy .button-primary svg { color: #FFFFFF; }
+.hero-copy .button-secondary svg { color: #16834B; }
 .stat-card:hover { box-shadow: 0 20px 46px rgba(39,87,48,.15),0 0 24px color-mix(in srgb,var(--stat-accent) 14%,transparent); }
 @keyframes mosaic-glow {
   0%,100% { box-shadow: 0 0 0 10px rgba(113,169,102,.08),0 0 35px rgba(94,159,86,.28),0 18px 40px rgba(45,99,52,.15); }
