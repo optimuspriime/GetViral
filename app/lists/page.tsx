@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import {
-  Bookmark, Download, FolderPlus, Plus, Trash2, Users, Pencil, Check, X,
+  Bookmark, Download, FolderPlus, Lock, Plus, Trash2, Users, Pencil, Check, X,
   Share2, Sparkles, Mail
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -36,6 +36,7 @@ export default function ListsPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({});
 
   const selected = lists.find((list) => list.id === selectedId) ?? lists[0] ?? null;
@@ -78,10 +79,19 @@ export default function ListsPage() {
       return;
     }
     if (!selected) return;
-    if (confirm(`Are you sure you want to delete the list "${selected.name}"?`)) {
-      deleteList(selected.id);
-      setSelectedId(null);
+    if (lists.length <= 1) {
+      showToast("Cannot delete the only remaining list", "error");
+      return;
     }
+    setConfirmDeleteId(selected.id);
+  }
+
+  function confirmDeleteCurrentList() {
+    if (!selected) return;
+    const deletedId = selected.id;
+    setConfirmDeleteId(null);
+    deleteList(deletedId);
+    setSelectedId(null);
   }
 
   function exportList() {
@@ -188,7 +198,7 @@ export default function ListsPage() {
           }}
           role="status"
         >
-          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔒</span>
+          <Lock size={15} style={{ flexShrink: 0, marginTop: 2, color: "#92400e" }} />
           <div>
             <strong style={{ display: "block", color: "#78350f", marginBottom: 2 }}>
               Guest Sandbox Preview (Read-Only)
@@ -341,10 +351,40 @@ export default function ListsPage() {
                           onClick={handleDeleteCurrentList}
                           disabled={isGuest}
                           title={isGuest ? "Sign in to delete lists" : "Delete this list"}
+                          aria-expanded={confirmDeleteId === selected.id}
                           type="button"
                         >
                           <Trash2 size={13} />
                         </button>
+                      </div>
+                    )}
+                    {confirmDeleteId === selected.id && (
+                      <div
+                        className="inline-confirm-bar"
+                        role="region"
+                        aria-label="Confirm shortlist deletion"
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setConfirmDeleteId(null);
+                        }}
+                      >
+                        <span>Delete &ldquo;{selected.name}&rdquo;?</span>
+                        <div className="inline-confirm-actions">
+                          <button
+                            type="button"
+                            className="button button-danger button-sm"
+                            autoFocus
+                            onClick={confirmDeleteCurrentList}
+                          >
+                            Confirm Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-secondary button-sm"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     )}
                     <p>

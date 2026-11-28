@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import {
-  ArrowLeft, ArrowUpRight, Bookmark, CircleHelp, Globe2, Mail,
-  Check, CheckCircle2, Copy, Sparkles, ExternalLink
+  AlertTriangle, ArrowLeft, ArrowUpRight, Bookmark, CircleHelp, Globe2, Mail,
+  Check, CheckCircle2, Copy, Sparkles, ExternalLink, TrendingUp
 } from "lucide-react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useProspects } from "@/components/data-provider";
+import { TrendChart } from "@/components/charts";
+import { CompactMetric } from "@/components/compact-metric";
 import { platformColors, platformMetricLabel } from "@/lib/platforms";
 import { currentReach, latestMetric, reachMetricName } from "@/lib/metrics";
 import type { Creator, MetricSnapshot, PlatformAccount } from "@/lib/model";
@@ -362,7 +364,61 @@ export default function CreatorProfilePage() {
             )}
           </div>
 
-          {/* Filtered Account Snapshots with Scroller */}
+          {/* Filtered Historical Trajectory & Account Snapshots */}
+          {(() => {
+            const obsAccounts =
+              selectedObsPlatform === "All"
+                ? creator.accounts
+                : creator.accounts.filter((a) => a.platform === selectedObsPlatform);
+
+            const byDate = new Map<string, Record<string, string | number | null>>();
+            const activePlatforms = new Set<string>();
+
+            for (const acc of obsAccounts) {
+              for (const snap of acc.snapshots) {
+                if (snap.value === null || !snap.collectedAt) continue;
+                const d = new Date(snap.collectedAt);
+                if (isNaN(d.getTime())) continue;
+                const isoDay = d.toISOString().split("T")[0];
+                if (snap.metricName !== "followers") continue;
+                const entry = byDate.get(isoDay) ?? {
+                  date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }),
+                  _ts: isoDay,
+                };
+                entry[acc.platform] = snap.value;
+                activePlatforms.add(acc.platform);
+                byDate.set(isoDay, entry);
+              }
+            }
+
+            const trendRows = [...byDate.entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([, row]) => row);
+            const trendSeries = [...activePlatforms];
+
+            return trendRows.length >= 2 && trendSeries.length > 0 ? (
+              <div className="trend-chart-panel" style={{ marginBottom: 18 }}>
+                <TrendChart
+                  data={trendRows}
+                  label="Followers / Subscribers"
+                  series={trendSeries}
+                />
+              </div>
+            ) : (
+              <div className="trend-empty-state" role="status">
+                <TrendingUp size={18} className="text-green" style={{ flexShrink: 0 }} />
+                <div>
+                  <strong>Historical Trend Chart — Needs More History</strong>
+                  <p>
+                    {trendRows.length === 1
+                      ? "Only 1 dated follower snapshot is stored so far. Re-check on future dates or use Refresh Live over time to plot a real trajectory without fabricated trends."
+                      : "No multi-day follower history recorded yet. Save or refresh this creator across multiple dates to inspect real trajectory growth."}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="observations-scroll-container">
             {(selectedObsPlatform === "All"
               ? creator.accounts
@@ -496,14 +552,20 @@ export default function CreatorProfilePage() {
                   marginTop: 10,
                   padding: "8px 10px",
                   background: "#fffbeb",
-                  border: "1px solid #fef3c7",
-                  borderRadius: 6,
-                  fontSize: "10.5px",
+                  border: "1px solid rgba(229, 154, 26, 0.35)",
+                  borderRadius: 10,
+                  fontSize: "11px",
                   color: "#92400e",
                   lineHeight: 1.45,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
                 }}
               >
-                ⚠️ <strong>Outreach Notice:</strong> Confirm this address on the creator&apos;s live channel page before initiating commercial agreements.
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1, color: "#D97706" }} />
+                <span>
+                  <strong>Outreach Notice:</strong> Confirm this address on the creator&apos;s live channel page before initiating commercial agreements.
+                </span>
               </div>
             </>
           ) : (
@@ -556,8 +618,8 @@ function AccountMetricCards({ account }: { account: PlatformAccount }) {
       <div className="metric-row-inline">
         <div>
           <div className="metric-label">Followers / Subscribers</div>
-          <div className="metric-value">
-            {followers === null ? "—" : formatNumber(followers)}
+          <div className="metric-value tabular-nums">
+            {followers === null ? "—" : <CompactMetric value={followers} suffix={unit} />}
           </div>
           <div className="metric-sub">
             {unit} · {sanitizePublicSourceLabel(account.platform, followerSnapshot?.source)} ({formatDate(followerSnapshot?.collectedAt ?? new Date().toISOString())})
@@ -565,7 +627,16 @@ function AccountMetricCards({ account }: { account: PlatformAccount }) {
         </div>
         <div>
           <div className="metric-label">{platformMetricLabel(account.platform, "reach")}</div>
-          <div className="metric-value">{reach === null ? "—" : formatNumber(reach)}</div>
+          <div className="metric-value tabular-nums">
+            {reach === null ? (
+              "—"
+            ) : (
+              <CompactMetric
+                value={reach}
+                suffix={reachMetric === "avg_live_viewers" ? "avg live viewers" : "avg video views"}
+              />
+            )}
+          </div>
           <div className="metric-sub">
             {reachMetric === "avg_live_viewers"
               ? `Live viewers · ${snapshot?.periodLabel ?? "Current live stream"}`
@@ -622,9 +693,13 @@ function AccountSnapshots({ account }: { account: PlatformAccount }) {
               <tr key={snapshot.id}>
                 <td>{formatDateTime(snapshot.collectedAt)}</td>
                 <td>{metricName(snapshot.metricName)}</td>
-                <td>
+                <td className="tabular-nums">
                   <strong>
-                    {snapshot.value === null ? "—" : formatNumber(snapshot.value)}
+                    {snapshot.value === null ? (
+                      "—"
+                    ) : (
+                      <CompactMetric value={snapshot.value} suffix={metricName(snapshot.metricName).toLowerCase()} />
+                    )}
                   </strong>
                 </td>
                 <td>
@@ -665,12 +740,6 @@ function metricName(value: string) {
   if (value === "avg_live_viewers") return "Average Concurrent Viewers";
   if (value === "avg_video_views") return "Average Video Views";
   return value;
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
-    value,
-  );
 }
 
 function formatDate(value: string) {

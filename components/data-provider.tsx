@@ -20,10 +20,16 @@ export interface Workspace {
   role: string;
 }
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastMessage {
   id: string;
   message: string;
   type: "success" | "info" | "error";
+  action?: ToastAction;
 }
 
 type Store = {
@@ -50,7 +56,11 @@ type Store = {
   createWorkspace: (name: string) => Workspace | null;
   renameWorkspace: (id: string, name: string) => void;
   addCustomCreator: (creator: Creator) => void;
-  showToast: (message: string, type?: "success" | "info" | "error") => void;
+  showToast: (
+    message: string,
+    type?: "success" | "info" | "error",
+    action?: ToastAction,
+  ) => void;
   isSyncing: boolean;
   lastSyncedAt: Date | null;
   syncAllPlatforms: () => Promise<void>;
@@ -162,13 +172,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const isAuthenticated = !isGuest && Boolean(ownerId);
 
-  const showToast = useCallback((message: string, type: "success" | "info" | "error" = "success") => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3200);
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const showToast = useCallback(
+    (
+      message: string,
+      type: "success" | "info" | "error" = "success",
+      action?: ToastAction,
+    ) => {
+      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      setToasts((prev) => [...prev, { id, message, type, action }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, action ? 5500 : 3200);
+    },
+    [],
+  );
 
   // Resolve verified identity from Supabase Auth
   useEffect(() => {
@@ -442,6 +463,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         showToast("Sign in required to modify saved creators.", "error");
         return;
       }
+      const targetList = lists.find((l) => l.id === listId);
+      const removedCreator = creators.find((c) => c.id === creatorId);
+      const wasInList = Boolean(targetList?.creatorIds.includes(creatorId));
       setLists((current) => {
         const updated = current.map((list) =>
           list.id === listId
@@ -454,9 +478,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         scheduleServerListSync(updated);
         return updated;
       });
-      showToast("Creator removed from list", "info");
+      if (wasInList) {
+        showToast(
+          `Removed ${removedCreator?.name ?? "creator"} from "${targetList?.name ?? "list"}"`,
+          "info",
+          {
+            label: "Undo",
+            onClick: () => {
+              setLists((current) => {
+                const restored = current.map((list) =>
+                  list.id === listId && !list.creatorIds.includes(creatorId)
+                    ? { ...list, creatorIds: [...list.creatorIds, creatorId] }
+                    : list,
+                );
+                scheduleServerListSync(restored);
+                return restored;
+              });
+              showToast(`Restored ${removedCreator?.name ?? "creator"} to shortlist`, "success");
+            },
+          },
+        );
+      }
     },
-    [isGuest, showToast, scheduleServerListSync],
+    [isGuest, lists, creators, showToast, scheduleServerListSync],
   );
 
   const createList = useCallback(
@@ -486,19 +530,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         showToast("Sign in required to delete shortlists.", "error");
         return;
       }
+      if (lists.length <= 1) {
+        showToast("Cannot delete the only remaining list", "error");
+        return;
+      }
+      const targetIndex = lists.findIndex((l) => l.id === listId);
+      const target = targetIndex >= 0 ? lists[targetIndex] : undefined;
+      if (!target) return;
+
       setLists((current) => {
-        if (current.length <= 1) {
-          showToast("Cannot delete the only remaining list", "error");
-          return current;
-        }
-        const target = current.find((l) => l.id === listId);
+        if (current.length <= 1) return current;
         const updated = current.filter((l) => l.id !== listId);
         scheduleServerListSync(updated);
-        showToast(`Deleted shortlist "${target?.name ?? ""}"`, "info");
         return updated;
       });
+
+      showToast(`Deleted shortlist "${target.name}"`, "info", {
+        label: "Undo",
+        onClick: () => {
+          setLists((current) => {
+            if (current.some((l) => l.id === target.id)) return current;
+            const restored = [...current];
+            restored.splice(Math.min(targetIndex, restored.length), 0, target);
+            scheduleServerListSync(restored);
+            return restored;
+          });
+          showToast(`Restored shortlist "${target.name}"`, "success");
+        },
+      });
     },
-    [isGuest, showToast, scheduleServerListSync],
+    [isGuest, lists, showToast, scheduleServerListSync],
   );
 
   const renameList = useCallback(
@@ -843,6 +904,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           <div key={toast.id} className={`toast-item toast-${toast.type}`}>
             <span className="toast-bullet" />
             <span>{toast.message}</span>
+            {toast.action && (
+              <button
+                type="button"
+                className="toast-action-btn"
+                onClick={() => {
+                  const fn = toast.action?.onClick;
+                  dismissToast(toast.id);
+                  fn?.();
+                }}
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>

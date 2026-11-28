@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BarChart3, CircleHelp, Users, Video, Radio, ChevronRight,
+  BarChart3, CircleHelp, Clock3, Lock, Users, Video, Radio, ChevronRight,
   Bookmark, Sparkles, CheckCircle2, X, Search, Globe, ShieldCheck
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProspects } from "@/components/data-provider";
 import {
-  ComparisonBarChart, PlatformChart, shortNumber
+  ComparisonBarChart, PlatformChart
 } from "@/components/charts";
+import { CompactMetric } from "@/components/compact-metric";
 import { BrandMark } from "@/components/brand-mark";
 import { platformColors } from "@/lib/platforms";
 import { INTEGRATIONS, type IntegrationHealthItem } from "@/lib/integrations";
@@ -134,14 +135,14 @@ export default function DashboardPage() {
           <BrandMark className="hero-logo-mark" />
         </div>
         <div className="hero-copy">
-          <div className="eyebrow">
-            <Sparkles size={12} className="inline-icon" /> LIVE CREATOR DISCOVERY · {activeWorkspace.name.toUpperCase()}
+          <div className="eyebrow hero-eyebrow-pill">
+            <Sparkles size={12} className="inline-icon" /> CREATOR STUDIO · {activeWorkspace.name.toUpperCase()}
           </div>
-          <h1>Discover real-time creators and manage campaign partnerships.</h1>
+          <h1>Discover live creators with clear reach, freshness, and shortlists.</h1>
           <p className="page-subtitle">
             {connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
               ? "Search live YouTube & Twitch channels, look up Kick handles, and connect creator-authorized TikTok & Instagram accounts — with transparent source timestamps."
-              : "Search live YouTube channels by topic or filter, look up Kick creators by exact @handle, and manage CRM shortlists. (Twitch pending activation; TikTok & Instagram require creator OAuth.)"}
+              : "Search live YouTube channels by topic or filter, look up Kick creators by exact @handle, and organize shortlists. (Twitch pending activation; TikTok & Instagram require creator OAuth.)"}
           </p>
 
           {/* Primary Search CTA */}
@@ -237,55 +238,37 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", fontSize: 12, alignItems: "center" }}>
-              <span style={{ color: "var(--muted, #68836c)" }}>Kick @handle:</span>
+            <div className="hero-examples-row" style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", fontSize: 12, alignItems: "center", justifyContent: "center" }}>
+              <span className="hero-example-label">Example queries:</span>
+              <span style={{ color: "var(--muted, #416453)", fontSize: 11 }}>Kick @handle</span>
               {["@adinross", "@xqc"].map((handle) => (
                 <button
                   key={handle}
                   type="button"
                   disabled={isQuotaExhausted}
-                  title={isQuotaExhausted ? "Search quota exhausted" : `Look up ${handle} live on Kick`}
+                  title={isQuotaExhausted ? "Search quota exhausted" : `Try example Kick lookup ${handle}`}
                   onClick={() =>
                     router.push(`/discover?platform=Kick&q=${encodeURIComponent(handle)}`)
                   }
-                  style={{
-                    background: "rgba(255, 255, 255, 0.85)",
-                    border: "1px solid rgba(80, 140, 80, 0.28)",
-                    borderRadius: 16,
-                    padding: "3px 10px",
-                    cursor: isQuotaExhausted ? "not-allowed" : "pointer",
-                    opacity: isQuotaExhausted ? 0.5 : 1,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#15803d",
-                  }}
+                  className="hero-chip hero-chip-emerald"
                 >
                   {handle}
                 </button>
               ))}
 
-              <span style={{ color: "var(--muted, #68836c)", marginLeft: 4 }}>
+              <span style={{ color: "var(--muted, #416453)", marginLeft: 4, fontSize: 11 }}>
                 {connectorsLoaded && activeConnectors.some((c) => c.platform === "Twitch")
-                  ? "Keyword (YouTube / Twitch):"
-                  : "Topic / Channel (YouTube):"}
+                  ? "YouTube / Twitch"
+                  : "YouTube topic"}
               </span>
               {["Gaming streamers", "Tech reviews", "Kai Cenat"].map((term) => (
                 <button
                   key={term}
                   type="button"
                   disabled={isQuotaExhausted}
-                  title={isQuotaExhausted ? "Search quota exhausted" : `Search "${term}"`}
+                  title={isQuotaExhausted ? "Search quota exhausted" : `Try example search "${term}"`}
                   onClick={() => router.push(`/discover?q=${encodeURIComponent(term)}`)}
-                  style={{
-                    background: "rgba(255, 255, 255, 0.65)",
-                    border: "1px solid rgba(80, 140, 80, 0.18)",
-                    borderRadius: 16,
-                    padding: "3px 10px",
-                    cursor: isQuotaExhausted ? "not-allowed" : "pointer",
-                    opacity: isQuotaExhausted ? 0.5 : 1,
-                    fontSize: 11,
-                    color: "#285d38",
-                  }}
+                  className="hero-chip"
                 >
                   {term}
                 </button>
@@ -313,27 +296,60 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* KPI Stat Grid (Consistent Saved Creators copy & non-duplicated subtitles) */}
+      {/* KPI Stat Grid */}
       <div className="stat-grid">
-        <div onClick={() => router.push("/lists")} className="stat-clickable" role="button" tabIndex={0}>
+        <div
+          onClick={() => router.push("/lists")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              router.push("/lists");
+            }
+          }}
+          className="stat-clickable"
+          role="button"
+          tabIndex={0}
+        >
           <StatCard
-            tone="violet"
+            tone="emerald"
             label="Saved Creators"
             value={creators.length}
             note="Creators saved to CRM"
             icon={<Users size={16} />}
           />
         </div>
-        <div onClick={() => router.push("/lists")} className="stat-clickable" role="button" tabIndex={0}>
+        <div
+          onClick={() => router.push("/lists")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              router.push("/lists");
+            }
+          }}
+          className="stat-clickable"
+          role="button"
+          tabIndex={0}
+        >
           <StatCard
-            tone="teal"
+            tone="violet"
             label="Active Shortlists"
             value={activeShortlistCount}
             note="Shortlist folders with creators"
             icon={<BarChart3 size={16} />}
           />
         </div>
-        <div onClick={() => setShowExplainer(true)} className="stat-clickable" role="button" tabIndex={0}>
+        <div
+          onClick={() => setShowExplainer(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setShowExplainer(true);
+            }
+          }}
+          className="stat-clickable"
+          role="button"
+          tabIndex={0}
+        >
           <StatCard
             tone="coral"
             label="Live Platforms"
@@ -352,9 +368,20 @@ export default function DashboardPage() {
             icon={<Globe size={16} />}
           />
         </div>
-        <div onClick={() => router.push(isGuest ? "/auth" : "/settings")} className="stat-clickable" role="button" tabIndex={0}>
+        <div
+          onClick={() => router.push(isGuest ? "/auth" : "/settings")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              router.push(isGuest ? "/auth" : "/settings");
+            }
+          }}
+          className="stat-clickable"
+          role="button"
+          tabIndex={0}
+        >
           <StatCard
-            tone="yellow"
+            tone="amber"
             label="Searches Remaining"
             value={subscription.totalQuota === -1 ? 999999 : subscription.searchesRemaining}
             note={
@@ -430,19 +457,29 @@ export default function DashboardPage() {
                 <p style={{ fontSize: 11, color: "#547359", margin: "0 0 10px", lineHeight: 1.4 }}>
                   {integ.statusNote}
                 </p>
-                <div style={{ fontSize: 10, color: "#68836c" }}>
+                <div style={{ fontSize: 11, color: "#416453" }}>
                   {!connectorsLoaded ? (
                     <span>Refreshing platform status…</span>
                   ) : integ.connected && integ.supportsLiveDiscovery ? (
-                    <span style={{ color: "#166534" }}>✓ Live keyword search &amp; @handle lookup</span>
+                    <span className="capability-status capability-status-live">
+                      <CheckCircle2 size={12} /> Live keyword search &amp; @handle lookup
+                    </span>
                   ) : integ.connected && integ.supportsHandleLookup ? (
-                    <span style={{ color: "#15803d" }}>✓ Exact @handle lookup active</span>
+                    <span className="capability-status capability-status-live">
+                      <CheckCircle2 size={12} /> Exact @handle lookup active
+                    </span>
                   ) : integ.mode === "unconfigured" ? (
-                    <span style={{ color: "#92400e" }}>⚡ Keyword search service pending</span>
+                    <span className="capability-status capability-status-pending">
+                      <Clock3 size={12} /> Keyword search service pending
+                    </span>
                   ) : integ.platform === "TikTok" ? (
-                    <span style={{ color: "#475569" }}>🔒 Requires TikTok Creator OAuth</span>
+                    <span className="capability-status capability-status-oauth">
+                      <Lock size={12} /> Requires TikTok Creator OAuth
+                    </span>
                   ) : (
-                    <span style={{ color: "#475569" }}>🔒 Requires Meta Professional OAuth</span>
+                    <span className="capability-status capability-status-oauth">
+                      <Lock size={12} /> Requires Meta Professional OAuth
+                    </span>
                   )}
                 </div>
               </div>
@@ -581,15 +618,41 @@ export default function DashboardPage() {
                             </span>
                           )}
                         </td>
-                        <td>
-                          {account && currentFollowers(account) !== null
-                            ? `${shortNumber(currentFollowers(account)!)} ${account.platform === "YouTube" ? "subs" : "followers"}`
-                            : "Unavailable"}
+                        <td className="tabular-nums">
+                          {account && currentFollowers(account) !== null ? (
+                            <>
+                              <CompactMetric
+                                value={currentFollowers(account)!}
+                                suffix={account.platform === "YouTube" ? "subscribers" : "followers"}
+                              />{" "}
+                              <span className="muted">
+                                {account.platform === "YouTube" ? "subs" : "followers"}
+                              </span>
+                            </>
+                          ) : (
+                            "Unavailable"
+                          )}
                         </td>
-                        <td>
-                          {account && currentReach(account) !== null
-                            ? `${shortNumber(currentReach(account)!)} ${reachMetricName(account) === "avg_live_viewers" ? "avg viewers" : "avg views"}`
-                            : "Unavailable"}
+                        <td className="tabular-nums">
+                          {account && currentReach(account) !== null ? (
+                            <>
+                              <CompactMetric
+                                value={currentReach(account)!}
+                                suffix={
+                                  reachMetricName(account) === "avg_live_viewers"
+                                    ? "avg live viewers"
+                                    : "avg video views"
+                                }
+                              />{" "}
+                              <span className="muted">
+                                {reachMetricName(account) === "avg_live_viewers"
+                                  ? "avg viewers"
+                                  : "avg views"}
+                              </span>
+                            </>
+                          ) : (
+                            "Unavailable"
+                          )}
                         </td>
                         <td>
                           <span>{getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Unavailable"}</span>
@@ -735,7 +798,7 @@ function StatCard({
   value: React.ReactNode;
   note: string;
   icon: React.ReactNode;
-  tone: "violet" | "teal" | "coral" | "yellow";
+  tone: "emerald" | "violet" | "coral" | "amber" | "teal" | "yellow";
 }) {
   return (
     <section className={`card stat-card stat-card-${tone}`}>
@@ -743,7 +806,7 @@ function StatCard({
         <span>{label}</span>
         <span className="stat-icon">{icon}</span>
       </div>
-      <div className="stat-value" suppressHydrationWarning>
+      <div className="stat-value tabular-nums" suppressHydrationWarning>
         {typeof value === "number"
           ? value >= 999999
             ? "Unlimited"

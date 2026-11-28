@@ -1,5 +1,6 @@
 "use client";
 
+import { Info } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer,
@@ -7,27 +8,30 @@ import {
 } from "recharts";
 import { platformColors } from "@/lib/platforms";
 import { PLATFORMS, type Platform } from "@/lib/model";
+import { formatCompactNumber, formatExactNumber } from "@/lib/format";
 
-const axis = { fill: "#54705B", fontSize: 10 };
+const axis = { fill: "#416453", fontSize: 10.5, fontWeight: 500 };
 const tooltipStyle = {
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #D7E7D7",
+  backgroundColor: "rgba(255, 255, 255, 0.96)",
+  border: "1px solid rgba(22, 131, 75, 0.22)",
   borderRadius: 12,
-  boxShadow: "0 12px 32px rgba(35,79,44,.14)",
-  color: "#173B27",
-  fontSize: 11,
+  boxShadow: "0 14px 32px rgba(23, 58, 43, 0.12)",
+  color: "#173A2B",
+  fontSize: 11.5,
+  fontVariantNumeric: "tabular-nums" as const,
   padding: "10px 14px",
 };
 
+// Restrained RGB-balanced studio spectrum anchored in emerald, lime, coral, violet, and amber
 const categoryPalette = [
-  "#3B82F6", // Blue
-  "#8B5CF6", // Violet
-  "#EC4899", // Pink
-  "#10B981", // Emerald
-  "#F59E0B", // Amber
-  "#06B6D4", // Cyan
-  "#6366F1", // Indigo
-  "#14B8A6", // Teal
+  "#16834B", // Studio Emerald
+  "#65A30D", // Fresh Lime-Moss
+  "#F06478", // Warm Coral
+  "#8B5CF6", // Electric Violet
+  "#E59A1A", // Golden Amber
+  "#14B8A6", // Crisp Mint-Teal
+  "#E11D48", // Vivid Rose
+  "#84CC16", // Highlight Lime
 ];
 
 function usePrefersReducedMotion() {
@@ -223,19 +227,20 @@ export function TrendChart({
             />
             <Tooltip
               contentStyle={tooltipStyle}
+              cursor={{ stroke: "#16834B", strokeWidth: 1.5, strokeDasharray: "4 4" }}
               formatter={(value, name) => [
-                `${Number(value).toLocaleString()} ${label.toLowerCase()}`,
+                `${formatExactNumber(Number(value))} ${label.toLowerCase()}`,
                 String(name),
               ]}
               labelFormatter={(dateStr) => `Audit Date: ${dateStr}`}
             />
             {series && activePlatform === "All" && (
-              <Legend wrapperStyle={{ fontSize: 10, paddingTop: 6 }} />
+              <Legend wrapperStyle={{ fontSize: 10.5, paddingTop: 6, color: "#416453" }} />
             )}
             {activeSeries.map((key) => {
               const stroke = series
-                ? platformColors[key as Platform] ?? "#367C4B"
-                : "#367C4B";
+                ? platformColors[key as Platform] ?? "#16834B"
+                : "#16834B";
               return (
                 <Line
                   key={key}
@@ -243,12 +248,12 @@ export function TrendChart({
                   dataKey={key}
                   name={key}
                   stroke={stroke}
-                  strokeWidth={2.8}
+                  strokeWidth={2.75}
                   dot={false}
-                  activeDot={{ r: 4, stroke: stroke, fill: stroke }}
+                  activeDot={{ r: 5, stroke: "#FFFFFF", strokeWidth: 2, fill: stroke }}
                   connectNulls={false}
                   isAnimationActive={!reducedMotion}
-                  animationDuration={600}
+                  animationDuration={700}
                   animationEasing="ease-out"
                 />
               );
@@ -258,11 +263,14 @@ export function TrendChart({
       </div>
 
       <div className="chart-help-caption">
-        <span>
-          💡 <strong>Audience Trajectory:</strong> Points represent verified snapshot audits.
-          {activePlatform === "All"
-            ? " Click any platform pill above to zoom into its trajectory curve."
-            : ` Showing isolated growth curve for ${activePlatform}.`}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Info size={13} style={{ color: "#16834B", flexShrink: 0 }} />
+          <span>
+            <strong>Audience Trajectory:</strong> Curve connects stored observation audits.
+            {activePlatform === "All"
+              ? " Select a platform pill above to isolate its trajectory curve."
+              : ` Showing isolated growth curve for ${activePlatform}.`}
+          </span>
         </span>
       </div>
 
@@ -464,7 +472,7 @@ export function ComparisonBarChart({
           />
           <Tooltip
             contentStyle={tooltipStyle}
-            formatter={(value) => [Number(value).toLocaleString(), valueLabel]}
+            formatter={(value) => [formatExactNumber(Number(value)), valueLabel]}
           />
           <Bar
             dataKey="value"
@@ -490,8 +498,5 @@ export function ComparisonBarChart({
 
 export function shortNumber(value: number) {
   if (typeof value !== "number" || isNaN(value)) return "0";
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
-  return String(value);
+  return formatCompactNumber(value);
 }

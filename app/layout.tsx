@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: "%s | GetViral",
   },
   description:
-    "Search live YouTube channels, look up Kick channel handles, and manage campaign partnerships with transparent API metrics and timestamps.",
+    "Discover creators across live public channels, evaluate verified reach and freshness, and organize partnership shortlists.",
   openGraph: {
     type: "website",
     siteName: "GetViral",

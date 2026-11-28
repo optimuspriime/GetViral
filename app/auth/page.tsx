@@ -345,7 +345,7 @@ export default function AuthPage() {
             onClick={handleInstantGuestPreview}
           >
             <Zap size={15} className="text-amber" />
-            <span>⚡ Explore Sandbox as Guest (Isolated Read-Only)</span>
+            <span>Explore Sandbox as Guest (Isolated Read-Only)</span>
           </button>
           <p style={{ fontSize: "11px", color: "var(--muted, #8b949e)", textAlign: "center", margin: "6px 0 0" }}>
             Opens an isolated demo guest session with read-only sandbox permissions. Cloud database writes are disabled.

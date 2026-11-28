@@ -15,6 +15,8 @@ import { COMMON_COUNTRIES, detectCreatorCountry, getCountryFlag } from "@/lib/co
 import { sanitizePublicSourceLabel } from "@/lib/public-labels";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SearchHintsDropdown, useSearchHints } from "@/components/search-hints-menu";
+import { CompactMetric } from "@/components/compact-metric";
+import { formatCompactNumber } from "@/lib/format";
 
 type Filters = {
   query: string;
@@ -1547,8 +1549,8 @@ export default function DiscoverPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: "#285d38", marginBottom: 4 }}>
                 <Info size={12} /> Audience Demographics
               </div>
-              <p style={{ fontSize: 10, color: "#68836c", margin: 0, lineHeight: 1.4 }}>
-                Audience geography requires creator-authorized OAuth tokens; public discovery APIs do not return private audience country metrics.
+              <p style={{ fontSize: 10, color: "#557966", margin: 0, lineHeight: 1.4 }}>
+                Audience geography requires creator-authorized OAuth tokens; public channel directories do not include private audience country metrics.
               </p>
             </div>
 
@@ -1750,24 +1752,34 @@ export default function DiscoverPage() {
                                   {getCountryFlag(creator.creatorCountry)} {creator.creatorCountry ?? "Global"}
                                 </span>
                               </td>
-                              <td>
+                              <td className="tabular-nums">
                                 {followers === null ? (
                                   unavailable()
                                 ) : (
                                   <>
-                                    <strong>{formatNumber(followers)}</strong>
+                                    <strong>
+                                      <CompactMetric
+                                        value={followers}
+                                        suffix={account.platform === "YouTube" ? "subscribers" : "followers"}
+                                      />
+                                    </strong>
                                     <span className="creator-handle">
                                       {account.platform === "YouTube" ? "subscribers" : "followers"}
                                     </span>
                                   </>
                                 )}
                               </td>
-                              <td>
+                              <td className="tabular-nums">
                                 {reach === null ? (
                                   unavailable()
                                 ) : (
                                   <>
-                                    <strong>{formatNumber(reach)}</strong>
+                                    <strong>
+                                      <CompactMetric
+                                        value={reach}
+                                        suffix={reachLabel.toLowerCase()}
+                                      />
+                                    </strong>
                                     <span className="creator-handle">
                                       {reachLabel} ·{" "}
                                       {liveSearchResults !== null
@@ -1973,18 +1985,33 @@ export default function DiscoverPage() {
                         <div className="mobile-card-metrics-grid">
                           <div className="mobile-metric-item">
                             <span className="mobile-metric-label">Followers / Subs</span>
-                            <strong className="mobile-metric-value">
-                              {followers !== null
-                                ? `${formatNumber(followers)} ${account.platform === "YouTube" ? "subs" : "followers"}`
-                                : "Unavailable"}
+                            <strong className="mobile-metric-value tabular-nums">
+                              {followers !== null ? (
+                                <>
+                                  <CompactMetric
+                                    value={followers}
+                                    suffix={account.platform === "YouTube" ? "subscribers" : "followers"}
+                                  />{" "}
+                                  {account.platform === "YouTube" ? "subs" : "followers"}
+                                </>
+                              ) : (
+                                "Unavailable"
+                              )}
                             </strong>
                           </div>
                           <div className="mobile-metric-item">
                             <span className="mobile-metric-label">
                               {reachMetric === "avg_live_viewers" ? "Avg. Live Viewers" : "Avg. Video Views"}
                             </span>
-                            <strong className="mobile-metric-value">
-                              {reach !== null ? formatNumber(reach) : "Unavailable"}
+                            <strong className="mobile-metric-value tabular-nums">
+                              {reach !== null ? (
+                                <CompactMetric
+                                  value={reach}
+                                  suffix={reachMetric === "avg_live_viewers" ? "avg live viewers" : "avg video views"}
+                                />
+                              ) : (
+                                "Unavailable"
+                              )}
                             </strong>
                           </div>
                         </div>
@@ -2468,9 +2495,7 @@ function FilterGroup({ label, children }: { label: string; children: React.React
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
-    value,
-  );
+  return formatCompactNumber(value);
 }
 
 function unavailable() {

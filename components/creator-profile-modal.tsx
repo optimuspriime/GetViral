@@ -328,7 +328,7 @@ export function CreatorProfileModal() {
     addCustomCreator(newCreator);
     setSubmitting(false);
     setCreatorModalOpen(false);
-    showToast(`🎉 Congratulations! Your creator profile for "${name}" is now live!`, "success");
+    showToast(`Congratulations! Your creator profile for "${name}" is now live.`, "success");
     router.push(`/creators/${creatorId}`);
   }
 

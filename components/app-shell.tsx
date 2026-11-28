@@ -16,10 +16,10 @@ import { CookieBanner } from "@/components/cookie-banner";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const navigation = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard, tone: "violet" },
-  { label: "Discover", href: "/discover", icon: Compass, tone: "cyan" },
+  { label: "Dashboard", href: "/", icon: LayoutDashboard, tone: "emerald" },
+  { label: "Discover", href: "/discover", icon: Compass, tone: "mint" },
   { label: "Saved Creators", href: "/lists", icon: Bookmark, tone: "coral" },
-  { label: "Settings", href: "/settings", icon: Settings2, tone: "lime" },
+  { label: "Settings", href: "/settings", icon: Settings2, tone: "violet" },
 ];
 
 function GlobalFooter() {
@@ -89,11 +89,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((prev) => !prev);
+      } else if (event.key === "Escape" && mobileOpen) {
+        setMobileOpen(false);
       }
     }
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
+  }, [mobileOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
