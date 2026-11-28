@@ -31,6 +31,67 @@ export const LANGUAGE_TO_ISO: Record<string, string> = {
   Spanish: "es",
 };
 
+export const REGIONAL_DISCOVERY_PROFILES: Record<
+  string,
+  { languageIso: string | null; browseTopics: string[]; emergingTopics: string[] }
+> = {
+  BR: {
+    languageIso: "pt",
+    browseTopics: ["brasil youtubers", "canal brasil vlog jogos musica", "criadores de conteudo brasil"],
+    emergingTopics: ["canal brasil podcast", "vlog diario brasil", "gameplay brasil"],
+  },
+  PT: {
+    languageIso: "pt",
+    browseTopics: ["portugal youtubers", "canal portugal vlog"],
+    emergingTopics: ["portugal podcast", "vlog portugal"],
+  },
+  IN: {
+    languageIso: "hi",
+    browseTopics: ["indian creators vlog tech", "hindi gaming comedy channel"],
+    emergingTopics: ["hindi podcast review", "indian vlog channel"],
+  },
+  ES: {
+    languageIso: "es",
+    browseTopics: ["espana youtubers", "creadores contenido espana"],
+    emergingTopics: ["podcast espana", "vlog espana"],
+  },
+  MX: {
+    languageIso: "es",
+    browseTopics: ["mexico youtubers", "creadores mexico vlog"],
+    emergingTopics: ["podcast mexico", "vlog mexico"],
+  },
+  AR: {
+    languageIso: "es",
+    browseTopics: ["argentina youtubers", "creadores argentina"],
+    emergingTopics: ["podcast argentina", "vlog argentina"],
+  },
+  DE: {
+    languageIso: "de",
+    browseTopics: ["deutschland youtube", "deutsche creator vlog gaming"],
+    emergingTopics: ["deutsch podcast", "vlog deutsch"],
+  },
+  FR: {
+    languageIso: "fr",
+    browseTopics: ["france youtubeurs", "createurs france vlog"],
+    emergingTopics: ["podcast france", "vlog france"],
+  },
+  JP: {
+    languageIso: "ja",
+    browseTopics: ["日本 ユーチューバー チャンネル", "japan youtube creators"],
+    emergingTopics: ["日本 ポッドキャスト", "日本 ゲーム実況"],
+  },
+  KR: {
+    languageIso: "ko",
+    browseTopics: ["한국 유튜버 채널", "korea youtube creators"],
+    emergingTopics: ["한국 브이로그", "한국 게임 채널"],
+  },
+  ID: {
+    languageIso: null,
+    browseTopics: ["indonesia youtubers", "kreator indonesia vlog"],
+    emergingTopics: ["podcast indonesia", "vlog indonesia"],
+  },
+};
+
 const ISO_TO_LANGUAGE: Record<string, string> = {
   ar: "Arabic",
   en: "English",
@@ -48,6 +109,13 @@ export function resolveCountryToIso(countryName?: string | null): string | null 
   const trimmed = countryName.trim();
   if (COUNTRY_TO_ISO[trimmed]) return COUNTRY_TO_ISO[trimmed];
   const lower = trimmed.toLowerCase();
+  if (lower === "brasil" || lower === "brazilian" || lower === "brasilia") return "BR";
+  if (lower === "usa" || lower === "america" || lower === "united states of america") return "US";
+  if (lower === "uk" || lower === "england" || lower === "britain") return "GB";
+  if (lower === "espana" || lower === "españa") return "ES";
+  if (lower === "deutschland") return "DE";
+  if (lower === "nippon" || lower === "nihon") return "JP";
+  if (lower === "korea") return "KR";
   for (const [name, iso] of Object.entries(COUNTRY_TO_ISO)) {
     if (name.toLowerCase() === lower || iso.toLowerCase() === lower) {
       return iso;

@@ -100,7 +100,13 @@ export function detectCreatorCountry(handle: string, displayName?: string | null
   if (/canada|toronto|vancouver|montreal|ontario|quebec/i.test(text)) return "Canada";
   if (/uk|united kingdom|london|england|scotland|manchester|birmingham/i.test(text)) return "United Kingdom";
   if (/spain|madrid|barcelona|espanol|españa/i.test(text)) return "Spain";
-  if (/brazil|brasil|rio|sao paulo|portugues/i.test(text)) return "Brazil";
+  if (
+    /brazil|brasil|brasileir|rio de janeiro|sao paulo|são paulo|curitiba|belo horizonte|fortaleza|bahia|recife|porto alegre|brasilia|portugues|português|inscreva|galera|futebol|jogos/i.test(
+      text,
+    )
+  ) {
+    return "Brazil";
+  }
   if (/colombia|bogota|medellin/i.test(text)) return "Colombia";
   if (/portugal|lisbon|porto/i.test(text)) return "Portugal";
   if (/argentina|buenos aires|rosario/i.test(text)) return "Argentina";

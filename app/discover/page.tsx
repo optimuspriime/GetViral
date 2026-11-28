@@ -173,6 +173,10 @@ function buildCreatorApiQuery(f: Filters): string {
   if (f.language !== "All languages") sp.set("language", f.language);
   if (f.minFollowers) sp.set("minFollowers", f.minFollowers);
   if (f.maxFollowers) sp.set("maxFollowers", f.maxFollowers);
+  if (f.minLive) sp.set("minLive", f.minLive);
+  if (f.maxLive) sp.set("maxLive", f.maxLive);
+  if (f.minViews) sp.set("minViews", f.minViews);
+  if (f.maxViews) sp.set("maxViews", f.maxViews);
   return sp.toString();
 }
 
@@ -185,6 +189,10 @@ function buildDiscoverBrowserUrl(f: Filters): string {
   if (f.language !== initialFilters.language) sp.set("language", f.language);
   if (f.minFollowers) sp.set("minFollowers", f.minFollowers);
   if (f.maxFollowers) sp.set("maxFollowers", f.maxFollowers);
+  if (f.minLive) sp.set("minLive", f.minLive);
+  if (f.maxLive) sp.set("maxLive", f.maxLive);
+  if (f.minViews) sp.set("minViews", f.minViews);
+  if (f.maxViews) sp.set("maxViews", f.maxViews);
   if (f.hasContact) sp.set("hasContact", "true");
   const qs = sp.toString();
   return qs ? `/discover?${qs}` : "/discover";
@@ -491,7 +499,14 @@ export default function DiscoverPage() {
         if (!nextFilters.query.trim()) {
           if (key === "platform" || key === "category" || key === "country" || key === "language") {
             scheduleBrowseRefresh(nextFilters, 0);
-          } else if (key === "minFollowers" || key === "maxFollowers") {
+          } else if (
+            key === "minFollowers" ||
+            key === "maxFollowers" ||
+            key === "minLive" ||
+            key === "maxLive" ||
+            key === "minViews" ||
+            key === "maxViews"
+          ) {
             scheduleBrowseRefresh(nextFilters, 350);
           }
         }
@@ -501,10 +516,15 @@ export default function DiscoverPage() {
     [scheduleBrowseRefresh],
   );
 
-  const applyFollowerPreset = useCallback(
-    (minVal: string, maxVal: string) => {
+  const applyRangePreset = useCallback(
+    (
+      minKey: "minFollowers" | "minLive" | "minViews",
+      maxKey: "maxFollowers" | "maxLive" | "maxViews",
+      minVal: string,
+      maxVal: string,
+    ) => {
       setFilters((current) => {
-        const nextFilters = { ...current, minFollowers: minVal, maxFollowers: maxVal };
+        const nextFilters = { ...current, [minKey]: minVal, [maxKey]: maxVal };
         window.history.replaceState(null, "", buildDiscoverBrowserUrl(nextFilters));
         if (!nextFilters.query.trim()) {
           scheduleBrowseRefresh(nextFilters, 0);
@@ -573,6 +593,10 @@ export default function DiscoverPage() {
       language: params.get("language") ?? initialFilters.language,
       minFollowers: params.get("minFollowers") ?? "",
       maxFollowers: params.get("maxFollowers") ?? "",
+      minLive: params.get("minLive") ?? "",
+      maxLive: params.get("maxLive") ?? "",
+      minViews: params.get("minViews") ?? "",
+      maxViews: params.get("maxViews") ?? "",
       hasContact: params.get("hasContact") === "true",
     };
 
@@ -826,10 +850,20 @@ export default function DiscoverPage() {
       label: `Avg. Viewers ≥ ${formatNumber(Number(filters.minLive))}`,
       clear: () => update("minLive", ""),
     });
+  if (filters.maxLive)
+    appliedFilters.push({
+      label: `Avg. Viewers ≤ ${formatNumber(Number(filters.maxLive))}`,
+      clear: () => update("maxLive", ""),
+    });
   if (filters.minViews)
     appliedFilters.push({
       label: `Avg. Views ≥ ${formatNumber(Number(filters.minViews))}`,
       clear: () => update("minViews", ""),
+    });
+  if (filters.maxViews)
+    appliedFilters.push({
+      label: `Avg. Views ≤ ${formatNumber(Number(filters.maxViews))}`,
+      clear: () => update("maxViews", ""),
     });
   if (filters.hasContact)
     appliedFilters.push({
@@ -1420,7 +1454,7 @@ export default function DiscoverPage() {
                       key={preset.label}
                       type="button"
                       className={`slider-preset-pill ${isActive ? "active" : ""}`}
-                      onClick={() => applyFollowerPreset(preset.min, preset.max)}
+                      onClick={() => applyRangePreset("minFollowers", "maxFollowers", preset.min, preset.max)}
                     >
                       {preset.label}
                     </button>
@@ -1430,100 +1464,94 @@ export default function DiscoverPage() {
             </FilterGroup>
 
             <FilterGroup label="Average Concurrent Viewers">
-              <div className="slider-filter-head">
-                <span className="filter-hint">Twitch & Kick live average</span>
-                <span className={`slider-count-badge ${filters.minLive ? "active" : ""}`}>
-                  {filters.minLive ? `≥ ${formatNumber(Number(filters.minLive))}` : "Any"}
-                </span>
-              </div>
-              <div className="range-slider-container">
+              <span className="filter-hint">Any custom min &amp; max (Twitch &amp; Kick live average)</span>
+              <div className="range-inputs">
                 <input
-                  aria-label="Desirable average concurrent viewers scroller"
-                  type="range"
+                  aria-label="Minimum average concurrent viewers"
+                  type="number"
                   min="0"
-                  max="80000"
-                  step="1000"
-                  className="filter-range-slider"
-                  value={filters.minLive || 0}
-                  onChange={(e) => update("minLive", e.target.value === "0" ? "" : e.target.value)}
+                  className="filter-input"
+                  value={filters.minLive}
+                  onChange={(e) => update("minLive", e.target.value)}
+                  placeholder="Min"
                 />
-                <div className="slider-ticks">
-                  <span>0</span>
-                  <span>10K</span>
-                  <span>25K</span>
-                  <span>50K</span>
-                  <span>80K+</span>
-                </div>
+                <input
+                  aria-label="Maximum average concurrent viewers"
+                  type="number"
+                  min="0"
+                  className="filter-input"
+                  value={filters.maxLive}
+                  onChange={(e) => update("maxLive", e.target.value)}
+                  placeholder="Max"
+                />
               </div>
-              <div className="slider-presets">
+              <div className="slider-presets" style={{ marginTop: 6 }}>
                 {[
-                  { label: "All", val: "" },
-                  { label: "1K+", val: "1000" },
-                  { label: "5K+", val: "5000" },
-                  { label: "15K+", val: "15000" },
-                  { label: "30K+", val: "30000" },
-                  { label: "50K+", val: "50000" },
-                ].map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    className={`slider-preset-pill ${
-                      filters.minLive === preset.val || (!filters.minLive && !preset.val) ? "active" : ""
-                    }`}
-                    onClick={() => update("minLive", preset.val)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+                  { label: "All", min: "", max: "" },
+                  { label: "≤ 1K", min: "", max: "1000" },
+                  { label: "≤ 10K", min: "", max: "10000" },
+                  { label: "5K+", min: "5000", max: "" },
+                  { label: "15K+", min: "15000", max: "" },
+                ].map((preset) => {
+                  const isActive =
+                    filters.minLive === preset.min && filters.maxLive === preset.max;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className={`slider-preset-pill ${isActive ? "active" : ""}`}
+                      onClick={() => applyRangePreset("minLive", "maxLive", preset.min, preset.max)}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
             </FilterGroup>
 
             <FilterGroup label="Average Video Views">
-              <div className="slider-filter-head">
-                <span className="filter-hint">YouTube views per post</span>
-                <span className={`slider-count-badge ${filters.minViews ? "active" : ""}`}>
-                  {filters.minViews ? `≥ ${formatNumber(Number(filters.minViews))}` : "Any"}
-                </span>
-              </div>
-              <div className="range-slider-container">
+              <span className="filter-hint">Any custom min &amp; max (YouTube views per post)</span>
+              <div className="range-inputs">
                 <input
-                  aria-label="Desirable average video views scroller"
-                  type="range"
+                  aria-label="Minimum average video views"
+                  type="number"
                   min="0"
-                  max="3000000"
-                  step="25000"
-                  className="filter-range-slider"
-                  value={filters.minViews || 0}
-                  onChange={(e) => update("minViews", e.target.value === "0" ? "" : e.target.value)}
+                  className="filter-input"
+                  value={filters.minViews}
+                  onChange={(e) => update("minViews", e.target.value)}
+                  placeholder="Min"
                 />
-                <div className="slider-ticks">
-                  <span>0</span>
-                  <span>250K</span>
-                  <span>1M</span>
-                  <span>2M</span>
-                  <span>3M+</span>
-                </div>
+                <input
+                  aria-label="Maximum average video views"
+                  type="number"
+                  min="0"
+                  className="filter-input"
+                  value={filters.maxViews}
+                  onChange={(e) => update("maxViews", e.target.value)}
+                  placeholder="Max"
+                />
               </div>
-              <div className="slider-presets">
+              <div className="slider-presets" style={{ marginTop: 6 }}>
                 {[
-                  { label: "All", val: "" },
-                  { label: "50K+", val: "50000" },
-                  { label: "250K+", val: "250000" },
-                  { label: "500K+", val: "500000" },
-                  { label: "1M+", val: "1000000" },
-                  { label: "2M+", val: "2000000" },
-                ].map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    className={`slider-preset-pill ${
-                      filters.minViews === preset.val || (!filters.minViews && !preset.val) ? "active" : ""
-                    }`}
-                    onClick={() => update("minViews", preset.val)}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+                  { label: "All", min: "", max: "" },
+                  { label: "≤ 50K", min: "", max: "50000" },
+                  { label: "≤ 250K", min: "", max: "250000" },
+                  { label: "250K+", min: "250000", max: "" },
+                  { label: "1M+", min: "1000000", max: "" },
+                ].map((preset) => {
+                  const isActive =
+                    filters.minViews === preset.min && filters.maxViews === preset.max;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className={`slider-preset-pill ${isActive ? "active" : ""}`}
+                      onClick={() => applyRangePreset("minViews", "maxViews", preset.min, preset.max)}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
             </FilterGroup>
 
@@ -2134,6 +2162,18 @@ export default function DiscoverPage() {
                         ? "Search YouTube & Twitch by keyword, look up Kick creators by exact @handle, or select a category, language, or follower size filter to browse live creator profiles."
                         : "Search YouTube by keyword, look up Kick creators by exact @handle, or select a category, language, or follower size filter to browse live creator profiles."}
                 </p>
+
+                {!isQuotaExhausted && filters.query.trim() && (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                    <button
+                      type="button"
+                      className="button button-primary button-sm"
+                      onClick={() => void executeSearch(filters.query.trim(), filters)}
+                    >
+                      <RefreshCw size={13} /> Search Live with Current Filters
+                    </button>
+                  </div>
+                )}
 
                 {isQuotaExhausted && filters.query && (
                   <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>

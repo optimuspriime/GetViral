@@ -1,6 +1,10 @@
 import "server-only";
 import type { Platform } from "@/lib/model";
-import { resolveCountryToIso, resolveLanguageToIso } from "@/lib/creator-metadata";
+import {
+  REGIONAL_DISCOVERY_PROFILES,
+  resolveCountryToIso,
+  resolveLanguageToIso,
+} from "@/lib/creator-metadata";
 import type { ConnectorResponse, FederatedSearchResponse, NormalizedCreator } from "./types";
 import { searchYouTube, youtubeCapabilities } from "./youtube";
 import { searchTwitch, twitchCapabilities } from "./twitch";
@@ -23,6 +27,7 @@ export interface BrowseOptions {
   country?: string | null;
   language?: string | null;
   maxFollowers?: number | null;
+  maxViews?: number | null;
 }
 
 /**
@@ -40,13 +45,18 @@ export async function getLiveBrowseCreators(
     options?.maxFollowers && Number.isFinite(options.maxFollowers) && options.maxFollowers > 0
       ? options.maxFollowers
       : null;
+  const maxViews =
+    options?.maxViews && Number.isFinite(options.maxViews) && options.maxViews > 0
+      ? options.maxViews
+      : null;
 
   const cacheKey = [
     platform || "all",
     category || "all",
     country || "all",
     language || "all",
-    maxFollowers ? String(maxFollowers) : "any",
+    maxFollowers ? String(maxFollowers) : "anyF",
+    maxViews ? String(maxViews) : "anyV",
   ]
     .join("|")
     .toLowerCase();
@@ -58,23 +68,44 @@ export async function getLiveBrowseCreators(
 
   const now = new Date().toISOString();
   const regionCode = resolveCountryToIso(country);
-  const relevanceLanguage = resolveLanguageToIso(language);
+  const regionalProfile = regionCode ? REGIONAL_DISCOVERY_PROFILES[regionCode] : undefined;
+  const relevanceLanguage = resolveLanguageToIso(language) || regionalProfile?.languageIso || null;
 
   const tasks: Array<{ platform: Platform; promise: Promise<ConnectorResponse> }> = [];
 
   if (!platform || platform === "YouTube") {
-    const baseTopic = category
-      ? `${category} youtube creators`
-      : maxFollowers && maxFollowers <= 500_000
-        ? "emerging youtube creators vlog gaming"
-        : "popular youtube creators";
+    const isNarrow = Boolean(
+      (maxFollowers && maxFollowers <= 500_000) || (maxViews && maxViews <= 500_000),
+    );
+    let baseTopic = "popular youtube creators";
+    let extraQueries: string[] = [];
+
+    if (category) {
+      baseTopic = regionalProfile ? `${category} ${regionalProfile.browseTopics[0]}` : `${category} creators`;
+      if (isNarrow) {
+        extraQueries = [`${category} podcast`, `${category} vlog`, `${category} review`];
+      }
+    } else if (regionalProfile) {
+      const seeds = isNarrow ? regionalProfile.emergingTopics : regionalProfile.browseTopics;
+      baseTopic = seeds[0];
+      extraQueries = seeds.slice(1);
+    } else if (isNarrow) {
+      baseTopic = "daily vlog channel";
+      extraQueries = ["indie podcast", "gameplay channel", "tech review channel"];
+    } else if (country) {
+      baseTopic = `${country} creators vlog`;
+      extraQueries = [`${country} youtube channel`, `${country} gaming podcast`];
+    }
+
     tasks.push({
       platform: "YouTube",
       promise: searchYouTube(baseTopic, {
-        limit: 40,
+        limit: 50,
         regionCode,
         relevanceLanguage,
         maxFollowers,
+        maxViews,
+        extraQueries,
       }),
     });
   }

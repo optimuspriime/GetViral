@@ -25,6 +25,8 @@ export interface YouTubeSearchOptions {
   regionCode?: string | null;
   relevanceLanguage?: string | null;
   maxFollowers?: number | null;
+  maxViews?: number | null;
+  extraQueries?: string[];
 }
 
 export async function searchYouTube(
@@ -36,12 +38,15 @@ export async function searchYouTube(
   const limit = Math.min(50, Math.max(1, options?.limit ?? 35));
   const regionCode = options?.regionCode?.trim().toUpperCase() || null;
   const relevanceLanguage = options?.relevanceLanguage?.trim().toLowerCase() || null;
+  const extraQueriesKey = (options?.extraQueries ?? []).join(",");
   const cacheKey = [
     q,
     limit,
     regionCode || "",
     relevanceLanguage || "",
-    options?.maxFollowers ? `max${options.maxFollowers}` : "",
+    options?.maxFollowers ? `maxF${options.maxFollowers}` : "",
+    options?.maxViews ? `maxV${options.maxViews}` : "",
+    extraQueriesKey,
   ].join("|");
 
   if (!q) {
@@ -60,7 +65,7 @@ export async function searchYouTube(
   if (!options?.bypassCache) {
     const cached =
       searchCache.get("YouTube", "search", cacheKey) ??
-      (!regionCode && !relevanceLanguage && !options?.maxFollowers
+      (!regionCode && !relevanceLanguage && !options?.maxFollowers && !options?.maxViews && !extraQueriesKey
         ? searchCache.get("YouTube", "search", q)
         : null);
     if (cached) return cached;
@@ -117,58 +122,104 @@ export async function searchYouTube(
       }
     }
 
-    const fetchChannelBatchBySearch = async (searchQuery: string, maxResults: number) => {
-      const searchParams = new URLSearchParams({
-        part: "snippet",
-        type: "channel",
-        maxResults: String(maxResults),
-        q: searchQuery,
-        key: apiKey,
-      });
-      if (regionCode) searchParams.set("regionCode", regionCode);
-      if (relevanceLanguage) searchParams.set("relevanceLanguage", relevanceLanguage);
+    const fetchChannelBatchBySearch = async (
+      searchQuery: string,
+      maxResults: number,
+      maxPages = 1,
+      order: "relevance" | "date" = "relevance",
+    ) => {
+      let pageToken: string | undefined;
+      const newChannelIds: string[] = [];
 
-      const searchUrl = `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`;
-      const res = await fetch(searchUrl, { next: { revalidate: 0 } });
+      for (let page = 0; page < maxPages; page++) {
+        const searchParams = new URLSearchParams({
+          part: "snippet",
+          type: "channel",
+          maxResults: String(Math.min(50, maxResults)),
+          q: searchQuery,
+          order,
+          key: apiKey,
+        });
+        if (regionCode) searchParams.set("regionCode", regionCode);
+        if (relevanceLanguage) searchParams.set("relevanceLanguage", relevanceLanguage);
+        if (pageToken) searchParams.set("pageToken", pageToken);
 
-      if (res.status === 429 || res.status === 403) {
-        const errData = await res.json().catch(() => ({}));
-        const reason = (errData as { error?: { errors?: Array<{ reason?: string }> } })?.error?.errors?.[0]?.reason;
-        if (reason === "quotaExceeded" || reason === "rateLimitExceeded") {
-          return { errorStatus: "rate_limited" as const, message: "YouTube Data API daily quota limit exceeded. Live queries paused until quota resets." };
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`;
+        const res = await fetch(searchUrl, { next: { revalidate: 0 } });
+
+        if (res.status === 429 || res.status === 403) {
+          const errData = await res.json().catch(() => ({}));
+          const reason = (errData as { error?: { errors?: Array<{ reason?: string }> } })?.error?.errors?.[0]?.reason;
+          if (reason === "quotaExceeded" || reason === "rateLimitExceeded") {
+            return { errorStatus: "rate_limited" as const, message: "YouTube Data API daily quota limit exceeded. Live queries paused until quota resets." };
+          }
         }
+
+        if (!res.ok) {
+          if (newChannelIds.length > 0) break;
+          return { errorStatus: "error" as const, message: `YouTube API returned HTTP ${res.status}: ${res.statusText}` };
+        }
+
+        const data = (await res.json()) as {
+          nextPageToken?: string;
+          items?: Array<{
+            id: { channelId: string };
+          }>;
+        };
+
+        for (const item of data.items ?? []) {
+          const cid = item.id?.channelId;
+          if (cid && !collectedChannels.has(cid) && !newChannelIds.includes(cid)) {
+            newChannelIds.push(cid);
+          }
+        }
+
+        pageToken = data.nextPageToken;
+        if (!pageToken || (data.items ?? []).length === 0) break;
       }
 
-      if (!res.ok) {
-        return { errorStatus: "error" as const, message: `YouTube API returned HTTP ${res.status}: ${res.statusText}` };
-      }
+      if (newChannelIds.length === 0) return { ok: true as const };
 
-      const data = (await res.json()) as {
-        items?: Array<{
-          id: { channelId: string };
-        }>;
-      };
-
-      const uniqueIds = Array.from(
-        new Set((data.items ?? []).map((i) => i.id?.channelId).filter(Boolean)),
-      ).filter((id) => !collectedChannels.has(id));
-
-      if (uniqueIds.length === 0) return { ok: true as const };
-
-      const statsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,topicDetails&id=${uniqueIds.join(",")}&key=${apiKey}`;
-      const statsRes = await fetch(statsUrl, { next: { revalidate: 0 } });
-      if (!statsRes.ok) {
-        return { errorStatus: "error" as const, message: `Failed to fetch YouTube channel statistics (HTTP ${statsRes.status})` };
-      }
-      const statsData = (await statsRes.json()) as YouTubeChannelStatsResponse;
-      for (const ch of statsData.items ?? []) {
-        collectedChannels.set(ch.id, ch);
+      // YouTube channels.list accepts up to 50 IDs per request
+      for (let offset = 0; offset < newChannelIds.length; offset += 50) {
+        const chunk = newChannelIds.slice(offset, offset + 50);
+        const statsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,topicDetails&id=${chunk.join(",")}&key=${apiKey}`;
+        const statsRes = await fetch(statsUrl, { next: { revalidate: 0 } });
+        if (!statsRes.ok) {
+          if (collectedChannels.size > 0) break;
+          return { errorStatus: "error" as const, message: `Failed to fetch YouTube channel statistics (HTTP ${statsRes.status})` };
+        }
+        const statsData = (await statsRes.json()) as YouTubeChannelStatsResponse;
+        for (const ch of statsData.items ?? []) {
+          collectedChannels.set(ch.id, ch);
+        }
       }
       return { ok: true as const };
     };
 
+    const countWithinBounds = () =>
+      Array.from(collectedChannels.values()).filter((ch) => {
+        const subs = ch.statistics.subscriberCount ? parseInt(ch.statistics.subscriberCount, 10) : null;
+        if (options?.maxFollowers && (subs === null || subs > options.maxFollowers)) {
+          return false;
+        }
+        if (options?.maxViews) {
+          const totalViews = ch.statistics.viewCount ? parseInt(ch.statistics.viewCount, 10) : null;
+          const videos = ch.statistics.videoCount ? parseInt(ch.statistics.videoCount, 10) : null;
+          const avg = totalViews && videos && videos > 0 ? Math.round(totalViews / videos) : null;
+          if (avg === null || avg > options.maxViews) return false;
+        }
+        return true;
+      }).length;
+
     if (collectedChannels.size === 0) {
-      const firstBatch = await fetchChannelBatchBySearch(q, limit);
+      const hasNarrowTier = Boolean(
+        (options?.maxFollowers && options.maxFollowers <= 500_000) ||
+        (options?.maxViews && options.maxViews <= 500_000),
+      );
+      const initialPages = limit > 1 && (hasNarrowTier || Boolean(regionCode)) ? 2 : 1;
+
+      const firstBatch = await fetchChannelBatchBySearch(q, limit, initialPages);
       if ("errorStatus" in firstBatch && firstBatch.errorStatus) {
         return {
           platform: "YouTube",
@@ -182,20 +233,35 @@ export async function searchYouTube(
         };
       }
 
-      // If caller asked for smaller creators (e.g. <= 100K) and broad search returned mega-channels only,
-      // run one complementary emerging-creator query so real <100K channels appear cleanly
-      if (options?.maxFollowers && options.maxFollowers <= 500_000 && limit > 1) {
-        const matchingCount = Array.from(collectedChannels.values()).filter((ch) => {
-          const subs = ch.statistics.subscriberCount ? parseInt(ch.statistics.subscriberCount, 10) : null;
-          return subs !== null && subs <= options.maxFollowers!;
-        }).length;
-
-        if (matchingCount < 4) {
-          const indieQuery = `${q} small creator channel`.trim();
-          await fetchChannelBatchBySearch(indieQuery, 50).catch(() => {});
+      // Run regional/niche complementary searches when broad query yields too few matching profiles
+      const extraSeeds = [...(options?.extraQueries ?? [])];
+      if (hasNarrowTier && limit > 1) {
+        for (const suffix of ["vlog", "podcast", "clips", "reviews"]) {
+          const derived = `${q} ${suffix}`.trim();
+          if (!extraSeeds.includes(derived)) {
+            extraSeeds.push(derived);
+          }
         }
       }
+
+      if (limit > 1 && extraSeeds.length > 0) {
+        const targetMatches = hasNarrowTier ? 20 : 65;
+        for (const extraSeed of extraSeeds.slice(0, 3)) {
+          if (hasNarrowTier ? countWithinBounds() >= targetMatches : collectedChannels.size >= targetMatches) {
+            break;
+          }
+          await fetchChannelBatchBySearch(extraSeed, 50, 1).catch(() => {});
+        }
+      }
+
+      // If filtering specifically for smaller channels (<500K subs) and relevance results remain mega-heavy,
+      // fetch active mid/emerging creators via recent activity order cleanly
+      if (hasNarrowTier && limit > 1 && countWithinBounds() < 15) {
+        await fetchChannelBatchBySearch(q, 50, 1, "date").catch(() => {});
+      }
     }
+
+    const regionCountryName = regionCode ? resolveCountryCode(regionCode) : null;
 
     const items: NormalizedCreator[] = Array.from(collectedChannels.values()).map((ch) => {
       const handle = ch.snippet.customUrl
@@ -209,9 +275,14 @@ export async function searchYouTube(
       const videoCount = ch.statistics.videoCount ? parseInt(ch.statistics.videoCount, 10) : null;
       const avgViews = totalViews && videoCount && videoCount > 0 ? Math.round(totalViews / videoCount) : null;
 
+      const explicitCountry = resolveCountryCode(ch.snippet.country);
+      const audioLang = (ch.snippet.defaultAudioLanguage || ch.snippet.defaultLanguage || "").toLowerCase();
+      const langCountry = audioLang.startsWith("pt-br") ? "Brazil" : null;
       const resolvedCountry =
-        resolveCountryCode(ch.snippet.country) ||
-        detectCreatorCountry(handle, ch.snippet.title, ch.snippet.description);
+        explicitCountry ||
+        detectCreatorCountry(handle, ch.snippet.title, ch.snippet.description) ||
+        langCountry ||
+        regionCountryName;
 
       const resolvedLanguage = detectCreatorLanguage(
         ch.snippet.defaultAudioLanguage || ch.snippet.defaultLanguage || null,

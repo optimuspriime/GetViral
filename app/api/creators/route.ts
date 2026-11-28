@@ -3,7 +3,11 @@ import type { Creator, Platform } from "@/lib/model";
 import { federatedSearch } from "@/lib/connectors/federated";
 import { getLiveBrowseCreators } from "@/lib/connectors/browse";
 import type { ConnectorStatus, NormalizedCreator } from "@/lib/connectors/types";
-import { resolveCountryToIso, resolveLanguageToIso } from "@/lib/creator-metadata";
+import {
+  REGIONAL_DISCOVERY_PROFILES,
+  resolveCountryToIso,
+  resolveLanguageToIso,
+} from "@/lib/creator-metadata";
 import { sanitizePublicSourceLabel } from "@/lib/public-labels";
 import { sanitizePublicErrorMessage } from "@/lib/server-sanitize";
 import { loadUserAccountData, saveCreatorsToSupabase, syncUserListsToSupabase } from "@/lib/supabase/db-sync";
@@ -87,6 +91,10 @@ function buildFilteredCreatorsAndStatuses(
     language: string | null;
     minFollowers: number | null;
     maxFollowers: number | null;
+    minLive: number | null;
+    maxLive: number | null;
+    minViews: number | null;
+    maxViews: number | null;
   },
 ) {
   let filtered = rawCreators.map(normalizeToWorkspaceCreator);
@@ -95,9 +103,10 @@ function buildFilteredCreatorsAndStatuses(
     filtered = filtered.filter((c) => (c.category || "").toLowerCase() === filters.category!.toLowerCase());
   }
 
-  if (filters.country) {
+  if (filters.country && filters.country.toLowerCase() !== "global") {
+    const requestedLower = filters.country.toLowerCase();
     filtered = filtered.filter((c) =>
-      c.creatorCountry?.toLowerCase().includes(filters.country!.toLowerCase()),
+      c.creatorCountry?.toLowerCase().includes(requestedLower),
     );
   }
 
@@ -114,6 +123,30 @@ function buildFilteredCreatorsAndStatuses(
         if (fSnap === null) return false;
         if (filters.minFollowers !== null && fSnap < filters.minFollowers) return false;
         if (filters.maxFollowers !== null && fSnap > filters.maxFollowers) return false;
+        return true;
+      }),
+    );
+  }
+
+  if (filters.minLive !== null || filters.maxLive !== null) {
+    filtered = filtered.filter((c) =>
+      c.accounts.some((a) => {
+        const lSnap = a.snapshots.find((s) => s.metricName === "avg_live_viewers")?.value ?? null;
+        if (lSnap === null) return false;
+        if (filters.minLive !== null && lSnap < filters.minLive) return false;
+        if (filters.maxLive !== null && lSnap > filters.maxLive) return false;
+        return true;
+      }),
+    );
+  }
+
+  if (filters.minViews !== null || filters.maxViews !== null) {
+    filtered = filtered.filter((c) =>
+      c.accounts.some((a) => {
+        const vSnap = a.snapshots.find((s) => s.metricName === "avg_video_views")?.value ?? null;
+        if (vSnap === null) return false;
+        if (filters.minViews !== null && vSnap < filters.minViews) return false;
+        if (filters.maxViews !== null && vSnap > filters.maxViews) return false;
         return true;
       }),
     );
@@ -189,8 +222,18 @@ export async function GET(request: Request) {
   const language = searchParams.get("language");
   const minRaw = searchParams.get("minFollowers");
   const maxRaw = searchParams.get("maxFollowers");
-  const minFollowers = minRaw && !Number.isNaN(Number(minRaw)) ? Number(minRaw) : null;
-  const maxFollowers = maxRaw && !Number.isNaN(Number(maxRaw)) ? Number(maxRaw) : null;
+  const minLiveRaw = searchParams.get("minLive");
+  const maxLiveRaw = searchParams.get("maxLive");
+  const minViewsRaw = searchParams.get("minViews");
+  const maxViewsRaw = searchParams.get("maxViews");
+  const parseOptNum = (raw: string | null) =>
+    raw !== null && raw.trim() !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : null;
+  const minFollowers = parseOptNum(minRaw);
+  const maxFollowers = parseOptNum(maxRaw);
+  const minLive = parseOptNum(minLiveRaw);
+  const maxLive = parseOptNum(maxLiveRaw);
+  const minViews = parseOptNum(minViewsRaw);
+  const maxViews = parseOptNum(maxViewsRaw);
 
   const session = await resolveServerSession(request);
 
@@ -217,8 +260,11 @@ export async function GET(request: Request) {
       return exhaustedRes;
     }
 
-    const regionCode = resolveCountryToIso(country);
-    const relevanceLanguage = resolveLanguageToIso(language);
+    // Detect if the user searched a country name directly in the search bar (e.g., "Brazil")
+    const queryAsCountryIso = resolveCountryToIso(q);
+    const regionCode = resolveCountryToIso(country) || queryAsCountryIso;
+    const regionalProfile = regionCode ? REGIONAL_DISCOVERY_PROFILES[regionCode] : undefined;
+    const relevanceLanguage = resolveLanguageToIso(language) || (queryAsCountryIso ? regionalProfile?.languageIso ?? null : null);
 
     const federated = await federatedSearch(q, {
       platform: platform && platform !== "All platforms" ? platform : undefined,
@@ -226,12 +272,14 @@ export async function GET(request: Request) {
       regionCode,
       relevanceLanguage,
       maxFollowers,
+      maxViews,
+      extraQueries: queryAsCountryIso && regionalProfile ? regionalProfile.browseTopics : undefined,
     });
 
     const processed = buildFilteredCreatorsAndStatuses(
       federated.creators,
       federated.connectorStatuses,
-      { category, country, language, minFollowers, maxFollowers },
+      { category, country, language, minFollowers, maxFollowers, minLive, maxLive, minViews, maxViews },
     );
 
     // Charge quota ONLY if at least one real provider succeeded and returned results
@@ -269,12 +317,13 @@ export async function GET(request: Request) {
       country,
       language,
       maxFollowers,
+      maxViews,
     });
 
     const processed = buildFilteredCreatorsAndStatuses(
       browseData.creators,
       browseData.connectorStatuses,
-      { category, country, language, minFollowers, maxFollowers },
+      { category, country, language, minFollowers, maxFollowers, minLive, maxLive, minViews, maxViews },
     );
 
     const browseRes = NextResponse.json({

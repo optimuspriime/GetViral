@@ -351,6 +351,140 @@ test("Federated Connectors Test Suite", async (t) => {
     assert.equal(browse.connectorStatuses.YouTube.status, "unconfigured");
   });
 
+  await t.test("14. YouTube regional search (Brazil) paginates and keeps blank-country regional channels", async () => {
+    const prevKey = process.env.YOUTUBE_DATA_API_KEY;
+    const prevFetch = globalThis.fetch;
+    process.env.YOUTUBE_DATA_API_KEY = "test-yt-key";
+
+    let searchCalls = 0;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/youtube/v3/search")) {
+        searchCalls++;
+        if (!url.includes("pageToken=PAGE2")) {
+          return new Response(
+            JSON.stringify({
+              nextPageToken: "PAGE2",
+              items: [{ id: { channelId: "UCbr1" } }, { id: { channelId: "UCbr2" } }],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            items: [{ id: { channelId: "UCbr3" } }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/youtube/v3/channels")) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "UCbr1",
+                snippet: { title: "Canal Brasil 1", country: "BR", description: "Jogos e vlog" },
+                statistics: { subscriberCount: "900000", viewCount: "90000000", videoCount: "100" },
+              },
+              {
+                id: "UCbr2",
+                snippet: { title: "Canal Sem Pais", defaultAudioLanguage: "pt-BR", description: "Conteudo diario" },
+                statistics: { subscriberCount: "85000", viewCount: "4000000", videoCount: "50" },
+              },
+              {
+                id: "UCbr3",
+                snippet: { title: "Global US", country: "US", description: "English channel" },
+                statistics: { subscriberCount: "2000000", viewCount: "50000000", videoCount: "100" },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await searchYouTube("Brazil", {
+        bypassCache: true,
+        limit: 50,
+        regionCode: "BR",
+        relevanceLanguage: "pt",
+      });
+      assert.ok(searchCalls >= 2, "Expected nextPageToken pagination across Brazilian pages");
+      const brChannels = res.items.filter((i) => i.country === "Brazil");
+      assert.equal(brChannels.length, 2, "Both BR-tagged and blank-country BR channels stay attributed to Brazil");
+      assert.equal(res.items.find((i) => i.id === "yt-UCbr3")?.country, "United States");
+    } finally {
+      globalThis.fetch = prevFetch;
+      if (prevKey) process.env.YOUTUBE_DATA_API_KEY = prevKey;
+      else delete process.env.YOUTUBE_DATA_API_KEY;
+    }
+  });
+
+  await t.test("15. YouTube <=100K search expands to emerging queries & recent channels when relevance is mega-only", async () => {
+    const prevKey = process.env.YOUTUBE_DATA_API_KEY;
+    const prevFetch = globalThis.fetch;
+    process.env.YOUTUBE_DATA_API_KEY = "test-yt-key";
+
+    const seenQueries: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.includes("/youtube/v3/search")) {
+        const q = url.searchParams.get("q") || "";
+        const order = url.searchParams.get("order") || "relevance";
+        seenQueries.push(`${q}|${order}`);
+        if (order === "date") {
+          return new Response(
+            JSON.stringify({ items: [{ id: { channelId: "UCsmall1" } }, { id: { channelId: "UCsmall2" } }] }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({ items: [{ id: { channelId: "UCmega1" } }] }),
+          { status: 200 },
+        );
+      }
+      if (url.pathname.includes("/youtube/v3/channels")) {
+        const ids = (url.searchParams.get("id") || "").split(",");
+        return new Response(
+          JSON.stringify({
+            items: ids.map((id) =>
+              id.startsWith("UCsmall")
+                ? {
+                    id,
+                    snippet: { title: `Indie ${id}`, description: "Creator" },
+                    statistics: { subscriberCount: "48000", viewCount: "1200000", videoCount: "30" },
+                  }
+                : {
+                    id,
+                    snippet: { title: "Mega 10M", description: "Big" },
+                    statistics: { subscriberCount: "10000000", viewCount: "500000000", videoCount: "200" },
+                  },
+            ),
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await searchYouTube("gaming", {
+        bypassCache: true,
+        limit: 50,
+        maxFollowers: 100_000,
+      });
+      assert.ok(seenQueries.some((entry) => entry.endsWith("|date")), "Expected recent-activity fallback for <=100K filter");
+      const under100k = res.items.filter((i) => i.followers !== null && i.followers <= 100_000);
+      assert.equal(under100k.length, 2, "Returned emerging <100K channels cleanly");
+    } finally {
+      globalThis.fetch = prevFetch;
+      if (prevKey) process.env.YOUTUBE_DATA_API_KEY = prevKey;
+      else delete process.env.YOUTUBE_DATA_API_KEY;
+    }
+  });
+
   // Restore env vars
   if (origYtKey) process.env.YOUTUBE_DATA_API_KEY = origYtKey;
   if (origTwitchId) process.env.TWITCH_CLIENT_ID = origTwitchId;

@@ -20,6 +20,8 @@ export async function federatedSearch(
     regionCode?: string | null;
     relevanceLanguage?: string | null;
     maxFollowers?: number | null;
+    maxViews?: number | null;
+    extraQueries?: string[];
   },
 ): Promise<FederatedSearchResponse> {
   const q = query.trim();
